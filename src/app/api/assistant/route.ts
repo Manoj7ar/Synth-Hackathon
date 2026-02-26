@@ -398,8 +398,7 @@ Latest SOAP notes excerpt: ${matchedPatient.soapNotes.slice(0, 700)}`
     let answer = ''
 
     try {
-      const { getGeminiModel } = await import('@/lib/gemini')
-      const model = getGeminiModel('gemini-2.0-flash')
+      const { generateNovaText } = await import('@/lib/nova')
       const prompt = `You are Synth Assist, a concise in-app assistant for a medical AI app.
 You help with:
 1) App navigation.
@@ -438,8 +437,7 @@ ${message}
 
 Respond with plain text only.`
 
-      const result = await model.generateContent(prompt)
-      answer = result.response.text().trim()
+      answer = (await generateNovaText({ prompt, maxTokens: 900, temperature: 0.2 })).trim()
     } catch {
       answer = buildFallbackResponse(
         message,
@@ -467,7 +465,7 @@ Respond with plain text only.`
       navigateTo: navigationIntent?.href ?? null,
       navigationLabel: navigationIntent?.label ?? null,
       matchedPatient: navigationIntent?.patientName ?? matchedPatient?.patientName ?? null,
-      poweredBy: 'Gemini',
+      poweredBy: 'Amazon Nova',
     })
   } catch (error) {
     console.error('Assistant API error:', error)

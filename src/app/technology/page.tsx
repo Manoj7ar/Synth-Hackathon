@@ -18,17 +18,17 @@ const stackItems = [
   },
   {
     title: "Core Data Layer",
-    body: "Prisma ORM with SQLite schema for users, patients, visits, notes, share links, appointments, and care plan items.",
+    body: "Prisma ORM with PostgreSQL schema for users, patients, visits, notes, share links, appointments, and care plan items.",
     icon: Database,
   },
   {
     title: "AI Layer",
-    body: "Gemini 2.0 Flash powers audio-to-transcript conversion, conversation summaries, and SOAP draft generation.",
+    body: "Amazon Nova (via Amazon Bedrock) powers conversation summaries, SOAP draft generation, and grounded chat responses.",
     icon: BrainCircuit,
   },
   {
-    title: "Search and Analytics",
-    body: "Elastic integrations support indexed chunks, entity extraction, analytics, and optional audit trail capabilities.",
+    title: "AWS Runtime",
+    body: "AWS-hosted deployment plan uses ECS Fargate, RDS PostgreSQL, Bedrock, S3, and CloudWatch for a production-ish hackathon setup.",
     icon: FileStack,
   },
 ];
@@ -41,7 +41,7 @@ const flowSteps = [
   },
   {
     title: "2. Transcribe",
-    body: "Audio is posted to /api/transcribe, then converted into speaker-labeled segments for clinician and patient dialogue.",
+    body: "Transcript text (or browser live transcript) is normalized into speaker-labeled segments for clinician and patient dialogue.",
     icon: BrainCircuit,
   },
   {
@@ -62,7 +62,7 @@ const privacyControls = [
   "Tokenized share links for patient views with revocation support in data model.",
   "HTTPS/TLS for data in transit between browser and server.",
   "AES-256 encryption at rest via managed infrastructure configuration (recommended deployment baseline).",
-  "Clear auditability path through visit-linked records and optional Elastic audit indexing.",
+  "Clear auditability path through visit-linked records and AWS CloudWatch logging.",
 ];
 
 export default function TechnologyPage() {

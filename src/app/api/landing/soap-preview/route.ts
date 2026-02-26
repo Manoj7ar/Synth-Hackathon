@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getGeminiModel, isGeminiConfigured } from '@/lib/gemini'
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { isNovaConfigured } from '@/lib/nova'
 import {
   deriveChiefComplaint,
   generateConversationSummary,
@@ -99,9 +99,7 @@ function parseStructuredTranscriptArray(raw: string): TranscriptSegment[] {
           if (!text.trim()) return null
 
           const speaker: TranscriptSpeaker =
-            item.speaker === 'clinician' || item.speaker === 'patient'
-              ? item.speaker
-              : 'patient'
+            item.speaker === 'clinician' || item.speaker === 'patient' ? item.speaker : 'patient'
 
           return {
             speaker,
@@ -152,9 +150,7 @@ function parseTranscriptText(rawText: string): TranscriptSegment[] {
     if (!line) continue
 
     let speaker: TranscriptSpeaker | null = null
-    const speakerMatch = line.match(
-      /^(doctor|dr\.?|clinician|provider|patient|pt)\s*:\s*(.+)$/i
-    )
+    const speakerMatch = line.match(/^(doctor|dr\.?|clinician|provider|patient|pt)\s*:\s*(.+)$/i)
     if (speakerMatch) {
       speaker = /^(doctor|dr\.?|clinician|provider)$/i.test(speakerMatch[1])
         ? 'clinician'
@@ -164,8 +160,7 @@ function parseTranscriptText(rawText: string): TranscriptSegment[] {
 
     if (!line) continue
 
-    const resolvedSpeaker: TranscriptSpeaker =
-      speaker ?? inferSpeakerFromText(line, previousSpeaker)
+    const resolvedSpeaker: TranscriptSpeaker = speaker ?? inferSpeakerFromText(line, previousSpeaker)
     previousSpeaker = resolvedSpeaker
 
     const durationMs = Math.max(1500, Math.min(15000, line.split(/\s+/).length * 500))
@@ -179,41 +174,6 @@ function parseTranscriptText(rawText: string): TranscriptSegment[] {
   }
 
   return sanitizeSegments(segments)
-}
-
-function parseGeminiTranscript(raw: string): TranscriptSegment[] {
-  const structured = parseStructuredTranscriptArray(raw)
-  if (structured.length > 0) return structured
-  return parseTranscriptText(raw)
-}
-
-async function transcribeAudioWithGemini(audioFile: File): Promise<TranscriptSegment[]> {
-  const model = getGeminiModel('gemini-2.0-flash')
-  const audioBytes = Buffer.from(await audioFile.arrayBuffer())
-  const base64Audio = audioBytes.toString('base64')
-  const mimeType = audioFile.type.startsWith('audio/') ? audioFile.type : 'audio/webm'
-
-  const result = await model.generateContent([
-    {
-      inlineData: {
-        mimeType,
-        data: base64Audio,
-      },
-    },
-    {
-      text: `You are a medical transcription assistant. Transcribe this audio of a doctor-patient visit.
-
-Return ONLY a JSON array. Each item must include:
-- speaker: "clinician" or "patient"
-- start_ms: number
-- end_ms: number
-- text: string
-
-Infer speaker roles from clinical context. Estimate timestamps if exact timing is unavailable. Do not invent content.`,
-    },
-  ])
-
-  return parseGeminiTranscript(result.response.text())
 }
 
 async function readTranscriptTextFromForm(formData: FormData): Promise<string> {
@@ -239,30 +199,31 @@ export async function POST(req: NextRequest) {
     let transcript: TranscriptSegment[] = []
 
     if (mode === 'audio') {
-      const audioFile = formData.get('audio')
-      if (!(audioFile instanceof File)) {
-        return NextResponse.json({ error: 'Please attach an audio file.' }, { status: 400 })
-      }
-
-      if (!isGeminiConfigured()) {
+      if (!isNovaConfigured()) {
         return NextResponse.json(
-          { error: 'Audio transcription requires GEMINI_API_KEY on the server.' },
+          { error: 'Audio transcription is unavailable because Amazon Nova is not configured.' },
           { status: 503 }
         )
       }
 
-      transcript = await transcribeAudioWithGemini(audioFile)
-    } else {
-      const rawTranscript = await readTranscriptTextFromForm(formData)
-      if (!rawTranscript) {
-        return NextResponse.json(
-          { error: 'Paste a transcript or attach a transcript file.' },
-          { status: 400 }
-        )
-      }
-
-      transcript = parseTranscriptText(rawTranscript)
+      return NextResponse.json(
+        {
+          error:
+            'Audio preview transcription is disabled in this Amazon Nova hackathon build. Paste a transcript or upload a transcript text file instead.',
+        },
+        { status: 503 }
+      )
     }
+
+    const rawTranscript = await readTranscriptTextFromForm(formData)
+    if (!rawTranscript) {
+      return NextResponse.json(
+        { error: 'Paste a transcript or attach a transcript file.' },
+        { status: 400 }
+      )
+    }
+
+    transcript = parseTranscriptText(rawTranscript)
 
     if (transcript.length === 0) {
       return NextResponse.json(
@@ -289,3 +250,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+

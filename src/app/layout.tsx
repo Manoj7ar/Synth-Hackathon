@@ -1,23 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { GlobalAiAssistant } from "@/components/assistant/GlobalAiAssistant";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Synth - AI Medical Visit Assistant",
+  title: "Synth Nova - AI Clinical Visit Copilot",
   description:
-    "Transform doctor-patient conversations into AI agents with medical entity extraction using Elasticsearch ML.",
+    "Amazon Nova-powered clinical visit copilot for transcript summarization, SOAP note generation, and grounded patient-safe chat.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -32,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="antialiased">
         <AuthProvider>
           {children}
           <GlobalAiAssistant />

@@ -77,8 +77,7 @@ async function generateMedicalReportContent(args: {
   additionalNotes: string
 }) {
   try {
-    const { getGeminiModel } = await import('@/lib/gemini')
-    const model = getGeminiModel('gemini-2.0-flash')
+    const { generateNovaText } = await import('@/lib/nova')
     const prompt = `You are a senior clinical documentation assistant.
 Generate a professional, print-ready, medical-grade report in markdown.
 Use concise clinical language and include only information present in the context.
@@ -106,8 +105,7 @@ Additional Notes:
 ${args.additionalNotes}
 `
 
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().trim()
+    const text = (await generateNovaText({ prompt, maxTokens: 1500, temperature: 0.2 })).trim()
     if (!text) {
       return fallbackReport(args)
     }

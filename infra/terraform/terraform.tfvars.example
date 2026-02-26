@@ -1,0 +1,19 @@
+﻿aws_region         = "us-east-1"
+project_name       = "synth-nova"
+environment        = "hackathon"
+vpc_id             = "vpc-xxxxxxxx"
+public_subnet_ids  = ["subnet-public-a", "subnet-public-b"]
+private_subnet_ids = ["subnet-private-a", "subnet-private-b"]
+app_image_uri      = "123456789012.dkr.ecr.us-east-1.amazonaws.com/synth-nova-hackathon-app:latest"
+
+# App/public URLs
+nextauth_url       = "https://your-app.example.com"
+next_public_app_url = "https://your-app.example.com"
+
+# DB
+db_password = "change-me"
+
+# Optional overrides
+bedrock_nova_text_model_id = "amazon.nova-lite-v1:0"
+bedrock_nova_fast_model_id = "amazon.nova-micro-v1:0"
+

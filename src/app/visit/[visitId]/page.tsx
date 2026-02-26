@@ -1,11 +1,12 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { extractMedicalEntities } from '@/lib/clinical-entities'
 import { TranscriptEditor } from '@/components/visit/TranscriptEditor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { TranscriptChunk as EditorTranscriptChunk } from '@/types'
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
 import { FinalizeButton } from './FinalizeButton'
 import { requireClinicianPage } from '@/lib/server/clinician-auth'
 
@@ -17,64 +18,67 @@ type VisitTranscriptChunk = EditorTranscriptChunk & {
 
 export default async function VisitPage({ params }: { params: Promise<{ visitId: string }> }) {
   const { user } = await requireClinicianPage()
-
   const { visitId } = await params
 
   const visit = await prisma.visit.findUnique({
     where: { id: visitId },
-    include: { patient: true, shareLinks: true }
+    include: { patient: true, shareLinks: true },
   })
 
   if (!visit || visit.clinicianId !== user.id) {
     redirect('/clinician')
   }
 
-  // Try to get chunks from ES first
   let chunks: VisitTranscriptChunk[] = []
-  try {
-    const { getAllTranscriptChunks } = await import('@/lib/elasticsearch/search')
-    chunks = (await getAllTranscriptChunks(
-      visit.id,
-      visit.patientId
-    )) as unknown as VisitTranscriptChunk[]
-  } catch {
-    // ES not available
-  }
+  const doc = await prisma.visitDocumentation.findUnique({
+    where: { visitId: visit.id },
+    select: { transcriptJson: true },
+  })
 
-  // Fall back to Prisma VisitDocumentation + local ML entity extraction
-  if (chunks.length === 0) {
-    const doc = await prisma.visitDocumentation.findUnique({
-      where: { visitId: visit.id },
-      select: { transcriptJson: true },
-    })
+  if (doc?.transcriptJson) {
+    const segments = JSON.parse(doc.transcriptJson) as Array<{
+      speaker: string
+      start_ms: number
+      end_ms: number
+      text: string
+    }>
 
-    if (doc?.transcriptJson) {
-      const { extractMedicalEntities } = await import('@/lib/elasticsearch/ml')
-      const segments = JSON.parse(doc.transcriptJson) as Array<{
-        speaker: string; start_ms: number; end_ms: number; text: string
-      }>
-
-      chunks = await Promise.all(
-        segments.map(async (seg, idx) => {
-          const entities = await extractMedicalEntities(seg.text)
-          return {
-            chunk_id: `${visit.id}-chunk-${idx}`,
-            visit_id: visit.id,
-            patient_id: visit.patientId,
-            speaker: seg.speaker === 'clinician' ? 'clinician' : 'patient',
-            start_ms: seg.start_ms,
-            end_ms: seg.end_ms,
-            text: seg.text,
-            ml_entities: {
-              medications: entities.medications.map(m => ({ name: m.name, dosage: m.dosage, frequency: m.frequency, confidence: m.confidence })),
-              symptoms: entities.symptoms.map(s => ({ name: s.name, severity: s.severity, confidence: s.confidence })),
-              procedures: entities.procedures.map(p => ({ name: p.name, confidence: p.confidence })),
-              vitals: entities.vitals.map(v => ({ type: v.type, value: v.value, confidence: v.confidence }))
-            }
-          }
-        })
-      )
-    }
+    chunks = await Promise.all(
+      segments.map(async (seg, idx) => {
+        const entities = await extractMedicalEntities(seg.text)
+        return {
+          chunk_id: `${visit.id}-chunk-${idx}`,
+          visit_id: visit.id,
+          patient_id: visit.patientId,
+          speaker: seg.speaker === 'clinician' ? 'clinician' : 'patient',
+          start_ms: seg.start_ms,
+          end_ms: seg.end_ms,
+          text: seg.text,
+          ml_entities: {
+            medications: entities.medications.map((m) => ({
+              name: m.name,
+              dosage: m.dosage,
+              frequency: m.frequency,
+              confidence: m.confidence,
+            })),
+            symptoms: entities.symptoms.map((s) => ({
+              name: s.name,
+              severity: s.severity,
+              confidence: s.confidence,
+            })),
+            procedures: entities.procedures.map((p) => ({
+              name: p.name,
+              confidence: p.confidence,
+            })),
+            vitals: entities.vitals.map((v) => ({
+              type: v.type,
+              value: v.value,
+              confidence: v.confidence,
+            })),
+          },
+        }
+      })
+    )
   }
 
   return (
@@ -92,15 +96,11 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
                 <h1 className="text-xl font-bold text-gray-900">{visit.patient.displayName}</h1>
                 <p className="text-sm text-gray-600">{visit.chiefComplaint}</p>
               </div>
-              <Badge variant={visit.status === 'finalized' ? 'default' : 'secondary'}>
-                {visit.status}
-              </Badge>
+              <Badge variant={visit.status === 'finalized' ? 'default' : 'secondary'}>{visit.status}</Badge>
             </div>
-            
+
             <div className="flex items-center gap-3">
-              {visit.status === 'draft' && chunks.length > 0 && (
-                <FinalizeButton visitId={visit.id} />
-              )}
+              {visit.status === 'draft' && chunks.length > 0 && <FinalizeButton visitId={visit.id} />}
 
               {visit.status === 'finalized' && visit.shareLinks[0] && (
                 <Link href={`/patient/${visit.shareLinks[0].token}`} target="_blank">
@@ -144,8 +144,7 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
                   <span className="font-medium">Patient:</span> {visit.patient.displayName}
                 </div>
                 <div>
-                  <span className="font-medium">Clinician:</span>{' '}
-                  {user.name ?? 'Clinician'}
+                  <span className="font-medium">Clinician:</span> {user.name ?? 'Clinician'}
                   {user.specialty ? ` (${user.specialty})` : ''}
                 </div>
                 {user.practiceName && (
@@ -170,7 +169,7 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
             {chunks.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>ML Extracted Entities</CardTitle>
+                  <CardTitle>Extracted Entities</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4 text-sm">
@@ -179,9 +178,7 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
                       <div className="flex flex-wrap gap-2">
                         {chunks
                           .flatMap((c) => c.ml_entities?.medications || [])
-                          .filter(
-                            (med, idx, arr) => arr.findIndex((candidate) => candidate.name === med.name) === idx
-                          )
+                          .filter((med, idx, arr) => arr.findIndex((candidate) => candidate.name === med.name) === idx)
                           .map((med, idx: number) => (
                             <Badge key={idx} variant="default" className="bg-green-500 text-white border-0">
                               {med.name}
@@ -195,9 +192,7 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
                       <div className="flex flex-wrap gap-2">
                         {chunks
                           .flatMap((c) => c.ml_entities?.symptoms || [])
-                          .filter(
-                            (sym, idx, arr) => arr.findIndex((candidate) => candidate.name === sym.name) === idx
-                          )
+                          .filter((sym, idx, arr) => arr.findIndex((candidate) => candidate.name === sym.name) === idx)
                           .map((sym, idx: number) => (
                             <Badge key={idx} variant="default" className="bg-yellow-500 text-white border-0">
                               {sym.name}
@@ -209,13 +204,11 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
                     <div>
                       <div className="font-medium mb-2">Vitals</div>
                       <div className="space-y-1">
-                        {chunks
-                          .flatMap((c) => c.ml_entities?.vitals || [])
-                          .map((vital, idx: number) => (
-                            <div key={idx} className="text-xs bg-blue-50 p-2 rounded">
-                              <span className="font-medium">{vital.type}:</span> {vital.value}
-                            </div>
-                          ))}
+                        {chunks.flatMap((c) => c.ml_entities?.vitals || []).map((vital, idx: number) => (
+                          <div key={idx} className="text-xs bg-blue-50 p-2 rounded">
+                            <span className="font-medium">{vital.type}:</span> {vital.value}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -228,3 +221,4 @@ export default async function VisitPage({ params }: { params: Promise<{ visitId:
     </div>
   )
 }
+

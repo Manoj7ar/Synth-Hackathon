@@ -1,4 +1,4 @@
-import { getGeminiModel } from '@/lib/gemini'
+﻿import { generateNovaText } from '@/lib/nova'
 
 export type TranscriptSpeaker = 'clinician' | 'patient'
 
@@ -32,20 +32,18 @@ export function deriveChiefComplaint(segments: TranscriptSegment[]): string {
   return cleanText(patientSegment.text).slice(0, 140) || 'Follow-up consultation'
 }
 
-// ── Gemini-powered generation (preferred) ──────────────────────────────
-
 export async function generateConversationSummary(segments: TranscriptSegment[]): Promise<string> {
   if (segments.length === 0) return 'No transcript segments available.'
 
   try {
-    const model = getGeminiModel('gemini-2.0-flash')
     const transcript = formatTranscriptForPrompt(segments)
-    const result = await model.generateContent(
-      `You are a medical documentation assistant. Summarize this doctor-patient conversation in 3-5 concise bullet points. Focus on: chief complaint, key findings, decisions made, and next steps.\n\n${transcript}\n\nReturn only the summary, no preamble.`
-    )
-    return result.response.text()
+    return await generateNovaText({
+      prompt: `You are a medical documentation assistant. Summarize this doctor-patient conversation in 3-5 concise bullet points. Focus on: chief complaint, key findings, decisions made, and next steps.\n\n${transcript}\n\nReturn only the summary, no preamble.`,
+      maxTokens: 600,
+      temperature: 0.2,
+    })
   } catch (e) {
-    console.warn('Gemini summary generation failed, using fallback:', e)
+    console.warn('Nova summary generation failed, using fallback:', e)
     return generateFallbackSummary(segments)
   }
 }
@@ -56,10 +54,9 @@ export async function generateSoapNotesFromTranscript(segments: TranscriptSegmen
   }
 
   try {
-    const model = getGeminiModel('gemini-2.0-flash')
     const transcript = formatTranscriptForPrompt(segments)
-    const result = await model.generateContent(
-      `You are a medical documentation assistant. Generate a SOAP note from this doctor-patient conversation transcript.
+    return await generateNovaText({
+      prompt: `You are a medical documentation assistant. Generate a SOAP note from this doctor-patient conversation transcript.
 
 ${transcript}
 
@@ -79,16 +76,15 @@ Format the output exactly as:
 ## P (Plan)
 [Treatment plan, medications, follow-ups, and patient instructions]
 
-Be thorough but concise. Extract real information from the transcript. Mark anything uncertain with [to be confirmed].`
-    )
-    return result.response.text()
+Be thorough but concise. Extract real information from the transcript. Mark anything uncertain with [to be confirmed].`,
+      maxTokens: 1400,
+      temperature: 0.2,
+    })
   } catch (e) {
-    console.warn('Gemini SOAP generation failed, using fallback:', e)
+    console.warn('Nova SOAP generation failed, using fallback:', e)
     return generateFallbackSoap(segments)
   }
 }
-
-// ── Fallback generators (no AI needed) ─────────────────────────────────
 
 function generateFallbackSummary(segments: TranscriptSegment[]): string {
   const patientStatements = segments
@@ -147,3 +143,4 @@ ${objectivePoints.length > 0 ? objectivePoints.map((line) => `- ${line}`).join('
 - Review medications, follow-up schedule, and return precautions with patient.
 `
 }
+

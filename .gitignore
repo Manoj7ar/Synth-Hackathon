@@ -45,3 +45,7 @@ prisma/*.db-*
 next-env.d.ts
 
 .vercel
+.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform/.terraform/

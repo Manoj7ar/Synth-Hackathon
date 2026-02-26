@@ -191,7 +191,7 @@ export function GlobalAiAssistant() {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-900">Synth AI</p>
-              <p className="text-xs text-slate-600">Powered by Gemini</p>
+              <p className="text-xs text-slate-600">Powered by Amazon Nova</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

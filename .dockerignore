@@ -1,0 +1,15 @@
+﻿node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+*.local
+.env
+.env.*
+coverage
+*.tsbuildinfo
+Synth.code-workspace
+infra/.terraform
+infra/terraform/.terraform
+infra/terraform/*.tfstate*
+

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getGeminiModel } from '@/lib/gemini'
+import { generateNovaText } from '@/lib/nova'
 import { prisma } from '@/lib/prisma'
 import type { TranscriptSegment } from '@/lib/clinical-notes'
 
@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
       patientId,
       visitId,
       shareToken,
-      agentId = 'synth_patient_agent',
     } = body
 
     if (!message || !patientId || !visitId) {
@@ -115,42 +114,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const kibanaUrl = process.env.KIBANA_URL
-    const kibanaApiKey = process.env.KIBANA_API_KEY
-
-    if (access.role === 'clinician' && kibanaUrl && kibanaApiKey) {
-      try {
-        const kibanaSpace = process.env.KIBANA_SPACE_ID || 'default'
-        const baseURL = kibanaSpace === 'default' ? kibanaUrl : `${kibanaUrl}/s/${kibanaSpace}`
-
-        const response = await fetch(`${baseURL}/api/agent_builder/converse/async`, {
-          method: 'POST',
-          headers: {
-            Authorization: `ApiKey ${kibanaApiKey}`,
-            'kbn-xsrf': 'true',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            agent_id: agentId,
-            conversation_id: conversationId || undefined,
-            input: message,
-            configuration_overrides: {
-              instructions: `Runtime context: You are responding to a clinician about visit ${visitId}. Patient ID: ${patientId}. Visit ID: ${visitId}.`,
-            },
-            capabilities: { visualizations: true },
-          }),
-        })
-
-        if (response.ok) {
-          const data = (await response.json()) as StreamPayload
-          return streamResponse(data, conversationId ?? null)
-        }
-      } catch {
-        // Fall back to Gemini.
-      }
-    }
-
-    const geminiResponse = await generateGeminiResponse({
+    const novaResponse = await generateNovaResponse({
       message,
       visitId,
       role: access.role,
@@ -158,12 +122,12 @@ export async function POST(req: NextRequest) {
 
     return streamResponse(
       {
-        conversation_id: conversationId || `gemini-conv-${Date.now()}`,
-        response: geminiResponse.text,
-        tool_events: geminiResponse.toolEvents,
-        citations: geminiResponse.citations,
-        source_details: geminiResponse.sourceDetails,
-        visualization: geminiResponse.visualization,
+        conversation_id: conversationId || `nova-conv-${Date.now()}`,
+        response: novaResponse.text,
+        tool_events: novaResponse.toolEvents,
+        citations: novaResponse.citations,
+        source_details: novaResponse.sourceDetails,
+        visualization: novaResponse.visualization,
       },
       conversationId ?? null
     )
@@ -228,7 +192,7 @@ async function resolveAccess({
   return { allowed: false, reason: 'Unauthorized' }
 }
 
-async function generateGeminiResponse({
+async function generateNovaResponse({
   message,
   visitId,
   role,
@@ -307,8 +271,6 @@ async function generateGeminiResponse({
           )
           .join('\n')
 
-  const model = getGeminiModel('gemini-2.0-flash')
-
   const systemPrompt =
     role === 'clinician'
       ? `You are Synth, an AI clinical assistant for clinicians.
@@ -357,10 +319,13 @@ Respond helpfully and safely.`
 
   let responseText = ''
   try {
-    const result = await model.generateContent(prompt)
-    responseText = result.response.text()
+    responseText = await generateNovaText({
+      prompt,
+      maxTokens: 1400,
+      temperature: role === 'clinician' ? 0.2 : 0.3,
+    })
   } catch (error) {
-    console.error('Gemini generation failed, using deterministic fallback:', error)
+    console.error('Nova generation failed, using deterministic fallback:', error)
     responseText = buildDeterministicFallback(message, context)
   }
 
