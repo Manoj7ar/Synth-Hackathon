@@ -1,0 +1,799 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Mic, Pause, Square, Loader2 } from 'lucide-react'
+
+type RecordingState = 'idle' | 'recording' | 'paused' | 'processing'
+type SpeakerRole = 'clinician' | 'patient'
+
+interface TranscriptSegment {
+  speaker: SpeakerRole
+  start_ms: number
+  end_ms: number
+  text: string
+}
+
+interface TranscribeResponse {
+  success: boolean
+  transcript: TranscriptSegment[]
+  duration_ms: number
+}
+
+interface SaveTranscriptionResponse {
+  success: boolean
+  visitId: string
+  patientName: string
+}
+
+interface LiveEntity {
+  kind: 'symptom' | 'medication' | 'vital'
+  name: string
+  emoji: string
+}
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean
+  0: SpeechRecognitionAlternativeLike
+}
+
+interface SpeechRecognitionResultListLike {
+  length: number
+  [index: number]: SpeechRecognitionResultLike
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number
+  results: SpeechRecognitionResultListLike
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+interface SpeechRecognitionConstructorLike {
+  new (): SpeechRecognitionLike
+}
+
+interface WindowWithSpeechRecognition extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructorLike
+  webkitSpeechRecognition?: SpeechRecognitionConstructorLike
+}
+
+interface TranscribeRecorderProps {
+  onRecordingFocusChange?: (active: boolean) => void
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+function formatTimestamp(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+function getAudioMimeType(): string | undefined {
+  const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+  return preferredTypes.find((type) => MediaRecorder.isTypeSupported(type))
+}
+
+function getSpeechRecognitionCtor(): SpeechRecognitionConstructorLike | null {
+  if (typeof window === 'undefined') return null
+  const speechWindow = window as WindowWithSpeechRecognition
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
+}
+
+function buildFallbackSegmentsFromLiveTranscript(transcript: string): TranscriptSegment[] {
+  const normalized = transcript.replace(/\s+/g, ' ').trim()
+  if (!normalized) return []
+
+  const chunks = normalized
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+
+  let currentMs = 0
+
+  return chunks.map((chunk, index) => {
+    const durationMs = Math.max(2500, Math.min(12000, chunk.length * 70))
+    const segment: TranscriptSegment = {
+      speaker: index % 2 === 0 ? 'patient' : 'clinician',
+      start_ms: currentMs,
+      end_ms: currentMs + durationMs,
+      text: chunk,
+    }
+    currentMs += durationMs
+    return segment
+  })
+}
+
+function dedupeLiveEntities(entities: LiveEntity[]): LiveEntity[] {
+  const seen = new Set<string>()
+  const output: LiveEntity[] = []
+  for (const entity of entities) {
+    const key = `${entity.kind}:${entity.name.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    output.push(entity)
+  }
+  return output
+}
+
+function extractLiveEntities(text: string): LiveEntity[] {
+  const lower = text.toLowerCase()
+  const entities: LiveEntity[] = []
+
+  const symptoms = [
+    'headache',
+    'headaches',
+    'dizzy',
+    'dizziness',
+    'nausea',
+    'fatigue',
+    'chest pain',
+    'shortness of breath',
+    'fever',
+    'cough',
+  ]
+  symptoms.forEach((symptom) => {
+    if (lower.includes(symptom)) {
+      entities.push({
+        kind: 'symptom',
+        name: symptom.replace(/\b\w/g, (char) => char.toUpperCase()),
+        emoji: '🩹',
+      })
+    }
+  })
+
+  const medicationPattern =
+    /\b(lisinopril|metformin|atorvastatin|amlodipine|losartan|aspirin|ibuprofen)\b/gi
+  const medicationMatches = text.match(medicationPattern) ?? []
+  medicationMatches.forEach((medication) => {
+    entities.push({
+      kind: 'medication',
+      name: medication.replace(/\b\w/g, (char) => char.toUpperCase()),
+      emoji: '💊',
+    })
+  })
+
+  const bpMatch = text.match(/\b(\d{2,3})\s*(?:\/|over)\s*(\d{2,3})\b/i)
+  if (bpMatch) {
+    entities.push({
+      kind: 'vital',
+      name: `BP ${bpMatch[1]}/${bpMatch[2]}`,
+      emoji: '🩺',
+    })
+  }
+
+  return dedupeLiveEntities(entities).slice(0, 8)
+}
+
+export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorderProps) {
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle')
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [liveTranscript, setLiveTranscript] = useState('')
+  const [interimTranscript, setInterimTranscript] = useState('')
+  const [liveEntities, setLiveEntities] = useState<LiveEntity[]>([])
+  const [segments, setSegments] = useState<TranscriptSegment[]>([])
+  const [errorMessage, setErrorMessage] = useState('')
+  const [patientName, setPatientName] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedVisitId, setSavedVisitId] = useState('')
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const recordedChunksRef = useRef<Blob[]>([])
+  const timerRef = useRef<number | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const recordingStateRef = useRef<RecordingState>('idle')
+  const fallbackTranscriptRef = useRef('')
+
+  useEffect(() => {
+    recordingStateRef.current = recordingState
+  }, [recordingState])
+
+  function startTimer() {
+    stopTimer()
+    timerRef.current = window.setInterval(() => {
+      setElapsedSeconds((seconds) => seconds + 1)
+    }, 1000)
+  }
+
+  function stopTimer() {
+    if (timerRef.current !== null) {
+      window.clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  function stopMediaTracks() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+  }
+
+  function stopSpeechRecognition() {
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setInterimTranscript('')
+  }
+
+  useEffect(() => {
+    return () => {
+      stopTimer()
+      stopSpeechRecognition()
+      stopMediaTracks()
+    }
+  }, [])
+
+  useEffect(() => {
+    const sourceText = `${liveTranscript} ${interimTranscript}`.trim()
+    if (!sourceText) {
+      setLiveEntities([])
+      return
+    }
+    setLiveEntities(extractLiveEntities(sourceText))
+  }, [liveTranscript, interimTranscript])
+
+  const startSpeechRecognition = () => {
+    const RecognitionCtor = getSpeechRecognitionCtor()
+    if (!RecognitionCtor) return
+
+    try {
+      const recognition = new RecognitionCtor()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'en-US'
+      recognition.onresult = (event) => {
+        let committedText = ''
+        let interimText = ''
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i]
+          const chunkText = result[0]?.transcript?.trim() ?? ''
+          if (!chunkText) continue
+
+          if (result.isFinal) {
+            committedText += `${chunkText} `
+          } else {
+            interimText += `${chunkText} `
+          }
+        }
+
+        if (committedText) {
+          setLiveTranscript((previous) => `${previous}${committedText}`)
+        }
+        setInterimTranscript(interimText.trim())
+      }
+      recognition.onerror = () => {
+        setInterimTranscript('')
+      }
+      recognition.onend = () => {
+        if (recordingStateRef.current === 'recording') {
+          startSpeechRecognition()
+        }
+      }
+      recognition.start()
+      recognitionRef.current = recognition
+    } catch {
+      // Browser speech recognition is optional.
+    }
+  }
+
+  const uploadAndTranscribe = async (blob: Blob) => {
+    const extension = blob.type.includes('mp4') ? 'mp4' : 'webm'
+    const audioFile = new File([blob], `recording.${extension}`, { type: blob.type || 'audio/webm' })
+    const formData = new FormData()
+    formData.append('audio', audioFile)
+
+    const response = await fetch('/api/transcribe', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      let errorText = 'Transcription failed.'
+      try {
+        const payload = (await response.json()) as { error?: string }
+        if (payload.error) errorText = payload.error
+      } catch {
+        // Keep default message.
+      }
+      throw new Error(errorText)
+    }
+
+    const payload = (await response.json()) as TranscribeResponse
+    setSegments(payload.transcript ?? [])
+  }
+
+  const startNewRecording = async () => {
+    setErrorMessage('')
+    setSaveError('')
+    setSavedVisitId('')
+    setSegments([])
+    setLiveTranscript('')
+    setInterimTranscript('')
+    setLiveEntities([])
+    setElapsedSeconds(0)
+    recordedChunksRef.current = []
+    fallbackTranscriptRef.current = ''
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    streamRef.current = stream
+
+    const mimeType = getAudioMimeType()
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    mediaRecorderRef.current = recorder
+
+    recorder.ondataavailable = (event: BlobEvent) => {
+      if (event.data.size > 0) {
+        recordedChunksRef.current.push(event.data)
+      }
+    }
+
+    recorder.onstop = async () => {
+      stopMediaTracks()
+
+      const recordingMimeType = mimeType ?? 'audio/webm'
+      const blob = new Blob(recordedChunksRef.current, { type: recordingMimeType })
+      if (blob.size === 0) {
+        setErrorMessage('No audio was captured. Please try again.')
+        setRecordingState('idle')
+        return
+      }
+
+      try {
+        await uploadAndTranscribe(blob)
+        setRecordingState('idle')
+      } catch (error) {
+        const fallbackTranscript = fallbackTranscriptRef.current || liveTranscript
+        const fallbackSegments = buildFallbackSegmentsFromLiveTranscript(fallbackTranscript)
+        if (fallbackSegments.length > 0) {
+          setSegments(fallbackSegments)
+          setErrorMessage(
+            'Server transcription was unavailable, so browser live transcript was used. Please review before saving.'
+          )
+          setRecordingState('idle')
+          return
+        }
+
+        const message =
+          error instanceof Error ? error.message : 'Unable to transcribe the recording.'
+        setErrorMessage(message)
+        setRecordingState('idle')
+      }
+    }
+
+    recorder.start(500)
+    startTimer()
+    startSpeechRecognition()
+    setRecordingState('recording')
+  }
+
+  const handleStart = async () => {
+    if (recordingState === 'processing') return
+
+    if (recordingState === 'paused') {
+      const recorder = mediaRecorderRef.current
+      if (recorder && recorder.state === 'paused') {
+        recorder.resume()
+        setRecordingState('recording')
+        startTimer()
+        startSpeechRecognition()
+      }
+      return
+    }
+
+    try {
+      await startNewRecording()
+    } catch {
+      setErrorMessage('Microphone access failed. Please allow microphone permission and retry.')
+      setRecordingState('idle')
+      stopMediaTracks()
+    }
+  }
+
+  const handlePause = () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recordingState !== 'recording' || recorder.state !== 'recording') return
+
+    recorder.pause()
+    stopTimer()
+    stopSpeechRecognition()
+    setRecordingState('paused')
+  }
+
+  const handleStop = () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') return
+
+    fallbackTranscriptRef.current = `${liveTranscript} ${interimTranscript}`.trim()
+    stopTimer()
+    stopSpeechRecognition()
+    setRecordingState('processing')
+    recorder.stop()
+  }
+
+  const speakerLabel = (speaker: SpeakerRole): string => {
+    return speaker === 'clinician' ? 'Doctor' : 'Patient'
+  }
+
+  const handleSaveTranscription = async () => {
+    if (segments.length === 0 || isSaving) return
+
+    const trimmedName = patientName.trim()
+    if (!trimmedName) {
+      setSaveError('Please add the patient name before saving.')
+      return
+    }
+
+    setSaveError('')
+    setIsSaving(true)
+
+    try {
+      const response = await fetch('/api/transcribe/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: trimmedName,
+          transcript: segments,
+        }),
+      })
+
+      const payload = (await response.json()) as SaveTranscriptionResponse & { error?: string }
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Unable to save transcription')
+      }
+
+      setSavedVisitId(payload.visitId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save transcription'
+      setSaveError(message)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const isRecordingFocus = recordingState === 'recording' || recordingState === 'paused'
+  const isPaused = recordingState === 'paused'
+  const isRecording = recordingState === 'recording'
+  const canStopRecording = isRecordingFocus
+
+  useEffect(() => {
+    onRecordingFocusChange?.(isRecordingFocus)
+
+    return () => {
+      onRecordingFocusChange?.(false)
+    }
+  }, [isRecordingFocus, onRecordingFocusChange])
+
+  if (isRecordingFocus) {
+    return (
+      <div className="space-y-6">
+        <div className="sticky top-0 z-10 rounded-3xl border border-[#eadfcd] bg-white/85 px-4 py-4 shadow-[0_12px_30px_rgba(84,63,31,0.12)] backdrop-blur-xl md:px-6 md:py-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              onClick={handleStart}
+              disabled={recordingState === 'recording'}
+              className="rounded-full bg-cyan-300 px-4 text-slate-950 hover:bg-cyan-200"
+            >
+              <Mic size={16} className="mr-2" />
+              {isPaused ? 'Resume' : 'Recording'}
+            </Button>
+            <Button
+              type="button"
+              onClick={handlePause}
+              disabled={!isRecording}
+              variant="ghost"
+              className="rounded-full border border-[#eadfcd] bg-white/80 text-slate-700 hover:bg-white"
+            >
+              <Pause size={16} className="mr-2" />
+              Pause
+            </Button>
+            <Button
+              type="button"
+              onClick={handleStop}
+              disabled={!canStopRecording}
+              variant="ghost"
+              className="rounded-full border border-[#eadfcd] bg-white/80 text-slate-700 hover:bg-white"
+            >
+              <Square size={16} className="mr-2" />
+              Stop
+            </Button>
+
+            <div className="ml-auto flex items-center gap-2 rounded-2xl border border-[#eadfcd] bg-white/80 px-4 py-2.5 text-sm font-medium text-slate-700">
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full ${
+                  isRecording ? 'bg-red-500' : 'bg-amber-500'
+                }`}
+              />
+              {formatElapsed(elapsedSeconds)}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+          <div className="min-h-[62vh] rounded-3xl border border-[#eadfcd] bg-white/80 p-6 shadow-[0_14px_40px_rgba(84,63,31,0.12)] backdrop-blur-xl md:p-7">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Live Transcript
+                </p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Speak naturally. Interim text will appear in italics until finalized.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                {recordingState === 'recording' ? 'Recording' : 'Paused'}
+              </span>
+            </div>
+
+            <div className="mt-6 max-h-[56vh] overflow-y-auto rounded-2xl border border-[#eadfcd] bg-white/70 p-5 pr-4">
+              {liveTranscript || interimTranscript ? (
+                <p className="text-[15px] leading-7 text-slate-800">
+                  {liveTranscript}
+                  {interimTranscript && (
+                    <span className="italic text-slate-500">{`${interimTranscript} `}</span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Listening... speak to see live transcript here.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-[#eadfcd] bg-white/80 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.10)] backdrop-blur-xl md:p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Session Status
+              </p>
+              <div className="mt-5 grid gap-4">
+                <div className="rounded-2xl border border-[#eadfcd] bg-white/75 px-4 py-3.5">
+                  <p className="text-xs text-slate-500">Elapsed time</p>
+                  <p className="mt-1.5 text-lg font-semibold tracking-tight text-slate-900">
+                    {formatElapsed(elapsedSeconds)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#eadfcd] bg-white/75 px-4 py-3.5">
+                  <p className="text-xs text-slate-500">State</p>
+                  <p className="mt-1.5 text-sm leading-6 font-medium text-slate-800">
+                    {recordingState === 'recording' ? 'Actively recording' : 'Paused'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-[#eadfcd] bg-white/80 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.10)] backdrop-blur-xl md:p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Live ML Signals
+              </p>
+              {liveEntities.length > 0 ? (
+                <div className="mt-5 flex flex-wrap gap-2.5">
+                  {liveEntities.map((entity) => (
+                    <span
+                      key={`${entity.kind}-${entity.name}`}
+                      className="inline-flex items-center rounded-full bg-[#f1e4cc] px-2.5 py-1 text-xs font-medium text-[#59431f]"
+                    >
+                      <span className="mr-1">{entity.emoji}</span>
+                      {entity.name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm leading-7 text-slate-500">
+                  Signals appear when symptoms, medications, or vitals are detected in the live
+                  transcript.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-7">
+      <div className="rounded-3xl border border-[#eadfcd] bg-white/70 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.08)] md:p-6">
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Recorder Controls
+            </p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Start recording to capture a visit, then stop to run AI transcription.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              onClick={handleStart}
+              disabled={recordingState === 'processing'}
+              className="rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+            >
+              <Mic size={16} className="mr-2" />
+              {isPaused ? 'Resume' : 'Start'}
+            </Button>
+            <Button
+              type="button"
+              onClick={handlePause}
+              disabled={!isRecording}
+              variant="ghost"
+              className="rounded-full border border-[#eadfcd] bg-white/80 text-slate-700 hover:bg-white"
+            >
+              <Pause size={16} className="mr-2" />
+              Pause
+            </Button>
+            <Button
+              type="button"
+              onClick={handleStop}
+              disabled={!canStopRecording}
+              variant="ghost"
+              className="rounded-full border border-[#eadfcd] bg-white/80 text-slate-700 hover:bg-white"
+            >
+              <Square size={16} className="mr-2" />
+              Stop
+            </Button>
+
+            <div className="ml-auto flex items-center gap-2 rounded-2xl border border-[#eadfcd] bg-white/80 px-4 py-2.5 text-sm font-medium text-slate-700">
+              {recordingState === 'processing' ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <span
+                    className={`inline-block h-2.5 w-2.5 rounded-full ${
+                      isRecording ? 'bg-red-500' : 'bg-slate-400'
+                    }`}
+                  />
+                  {formatElapsed(elapsedSeconds)}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {(liveTranscript || interimTranscript) && (
+        <div className="rounded-3xl border border-[#eadfcd] bg-white/70 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.08)] md:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Live Transcript
+          </p>
+          <div className="mt-5 rounded-2xl border border-[#eadfcd] bg-white/75 p-5">
+            <p className="text-sm leading-7 text-slate-700">
+              {liveTranscript}
+              {interimTranscript && (
+                <span className="italic text-slate-500">{`${interimTranscript} `}</span>
+              )}
+            </p>
+          </div>
+
+          {liveEntities.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Live ML Signals
+              </p>
+              <div className="mt-3.5 flex flex-wrap gap-2.5">
+                {liveEntities.map((entity) => (
+                  <span
+                    key={`${entity.kind}-${entity.name}`}
+                    className="inline-flex items-center rounded-full bg-[#f1e4cc] px-2.5 py-1 text-xs font-medium text-[#59431f]"
+                  >
+                    <span className="mr-1">{entity.emoji}</span>
+                    {entity.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="rounded-3xl border border-[#eadfcd] bg-white/70 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.08)] md:p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          Save Transcription
+        </p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          Save the parsed transcript to generate the patient summary and SOAP notes.
+        </p>
+
+        <div className="mt-5 flex flex-col gap-3.5 md:flex-row md:items-center">
+          <input
+            value={patientName}
+            onChange={(e) => setPatientName(e.target.value)}
+            placeholder="Patient name"
+            className="h-11 w-full rounded-xl border border-[#eadfcd] bg-white px-3.5 text-sm text-slate-900 outline-none placeholder:text-slate-500 md:flex-1"
+          />
+          <Button
+            type="button"
+            onClick={handleSaveTranscription}
+            disabled={segments.length === 0 || isSaving}
+            className="rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+          >
+            {isSaving ? 'Saving...' : 'Save transcription'}
+          </Button>
+        </div>
+
+        {saveError && <p className="mt-4 text-sm text-red-700">{saveError}</p>}
+        {savedVisitId && (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3.5 text-sm leading-6 text-emerald-800">
+            Saved successfully.{' '}
+            <Link href={`/soap-notes/${savedVisitId}`} className="font-semibold underline">
+              Open this patient in SOAP Notes
+            </Link>
+            .
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-3xl border border-[#eadfcd] bg-white/70 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.08)] md:p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          Transcript
+        </p>
+
+        {segments.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-[#e2d3bd] bg-white/60 p-5 text-sm leading-6 text-slate-600">
+            Record and stop to generate transcript. Speaker labels will appear as Doctor and
+            Patient.
+          </div>
+        ) : (
+          <div className="mt-5 max-h-[34rem] space-y-4 overflow-y-auto pr-1">
+            {segments.map((segment, index) => (
+              <div
+                key={`${segment.start_ms}-${index}`}
+                className={`rounded-2xl border px-4 py-4 md:px-5 ${
+                  segment.speaker === 'clinician'
+                    ? 'border-sky-200 bg-sky-50/70'
+                    : 'border-emerald-200 bg-emerald-50/70'
+                }`}
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                  <span>{speakerLabel(segment.speaker)}</span>
+                  <span className="text-slate-400 normal-case tracking-normal">
+                    {formatTimestamp(segment.start_ms)} - {formatTimestamp(segment.end_ms)}
+                  </span>
+                </div>
+                <p className="text-sm leading-7 text-slate-800">{segment.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
