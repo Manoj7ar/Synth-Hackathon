@@ -71,13 +71,14 @@ flowchart TB
   end
 
   subgraph App[Next.js App Router + API Routes]
-    AUTH[NextAuth Credentials]
-    TSave[/api/transcribe/save]
-    Chat[/api/chat]
-    Assist[/api/assistant]
-    Final[/api/finalize-visit]
-    Preview[/api/landing/soap-preview]
-    Health[/api/health]
+    AppCore["API Runtime"]
+    AUTH["NextAuth Credentials"]
+    TSave["/api/transcribe/save"]
+    Chat["/api/chat"]
+    Assist["/api/assistant"]
+    Final["/api/finalize-visit"]
+    Preview["/api/landing/soap-preview"]
+    Health["/api/health"]
   end
 
   subgraph AI[Amazon Bedrock]
@@ -104,8 +105,8 @@ flowchart TB
   TSave --> PG
   Chat --> PG
   Final --> PG
-  App --> Secrets
-  App --> S3
+  AppCore --> Secrets
+  AppCore --> S3
 ```
 
 ## Core User Flows
