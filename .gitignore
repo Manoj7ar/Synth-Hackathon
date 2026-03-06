@@ -36,6 +36,8 @@ yarn-error.log*
 
 # local app/runtime artifacts
 .devserver.log
+dev-server.log
+dev-server.err.log
 *.code-workspace
 prisma/*.db
 prisma/*.db-*
