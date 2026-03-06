@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { extractMedicalEntities } from '@/lib/clinical-entities'
+import { generateShareToken } from '@/lib/share-token'
 
 type MedicationSummary = {
   name: string
@@ -305,8 +306,3 @@ function extractFollowups(chunks: TranscriptChunk[]) {
 
   return followups
 }
-
-function generateShareToken() {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-}
-
