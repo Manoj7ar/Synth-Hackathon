@@ -177,19 +177,12 @@ Responsibilities:
   - `BEDROCK_NOVA_FAST_MODEL_ID`
 - exposes app version and Nova configuration checks
 
-### Compatibility Shim (Transitional)
+### Provider Cleanup
 
-`src/lib/gemini.ts`
+Legacy compatibility code has been removed so the Nova integration path is now direct:
 
-Current role:
-
-- Temporary compatibility adapter so older call sites still work while backed by Nova
-- Any audio-style `inlineData` request intentionally throws (server audio transcription is disabled)
-
-Recommendation:
-
-- Keep for hackathon stability
-- Remove after all imports are renamed to `nova.ts`
+- `src/lib/nova.ts` is the only active model provider wrapper
+- audio-style requests remain intentionally unsupported in this hackathon build
 
 ### Clinical Generation
 
@@ -592,4 +585,3 @@ Is everything else AWS-ready?
 - Infra scaffold: yes
 - Turnkey deployment: no (manual AWS configuration and deployment steps still required)
 - Audio transcription on server: no (intentionally disabled for this hackathon build)
-

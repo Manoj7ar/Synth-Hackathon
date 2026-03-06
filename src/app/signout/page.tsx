@@ -6,6 +6,11 @@ import { signOut } from 'next-auth/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LogOut, ArrowLeft } from 'lucide-react'
+import {
+  grainTextureStyle,
+  heroBackdropStyle,
+  heroBloomStyle,
+} from '@/lib/decorative-backgrounds'
 
 export default function SignOutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -20,30 +25,18 @@ export default function SignOutPage() {
       <div
         aria-hidden="true"
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/08-2.jpg')",
-          backgroundSize: 'cover',
-        }}
+        style={heroBackdropStyle}
       />
       <div
         aria-hidden="true"
         className="absolute inset-0 z-[1] bg-cover bg-bottom pointer-events-none"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/daisies-4.png')",
-          backgroundSize: 'cover',
-        }}
+        style={heroBloomStyle}
       />
       <div aria-hidden="true" className="absolute inset-0 z-[2] bg-black/35" />
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[3] pointer-events-none opacity-25"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/noise-3.png')",
-          backgroundRepeat: 'repeat',
-        }}
+        style={grainTextureStyle}
       />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center p-4">

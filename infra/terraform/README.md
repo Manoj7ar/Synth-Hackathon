@@ -27,6 +27,7 @@ This folder provides a starting Terraform configuration for deploying the Synth 
 - You still need to write the secret JSON values to the created Secrets Manager secret (DATABASE_URL, DIRECT_URL, NEXTAUTH_SECRET).
 - Add HTTPS (`aws_lb_listener` with ACM cert on 443) before a public demo domain.
 - If you want a fully private RDS bootstrap, run Prisma migrations from CI or a one-off ECS task.
+- ECS tasks run in private subnets, so the supplied VPC must already provide outbound access through NAT or the required VPC endpoints.
 
 ## Suggested Next Steps
 

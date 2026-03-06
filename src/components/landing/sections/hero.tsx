@@ -9,6 +9,11 @@ import {
   Paperclip,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/soap-notes/MarkdownRenderer";
+import {
+  grainTextureStyle,
+  heroBackdropStyle,
+  heroBloomStyle,
+} from "@/lib/decorative-backgrounds";
 
 type InputTab = "transcript" | "audio";
 type SpeakerRole = "clinician" | "patient";
@@ -120,29 +125,17 @@ const HeroSection: React.FC = () => {
       <div
         aria-hidden="true"
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/08-2.jpg')",
-          backgroundSize: "cover",
-        }}
+        style={heroBackdropStyle}
       />
       <div
         aria-hidden="true"
         className="absolute inset-0 z-[1] bg-cover bg-bottom opacity-100 pointer-events-none"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/daisies-4.png')",
-          backgroundSize: "cover",
-        }}
+        style={heroBloomStyle}
       />
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[2] pointer-events-none opacity-25"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/noise-3.png')",
-          backgroundRepeat: "repeat",
-        }}
+        style={grainTextureStyle}
       />
 
       <div className="w-full max-w-5xl px-6 pt-20 pb-10 flex flex-col items-center space-y-8 text-center mt-[-20px]">
@@ -439,16 +432,11 @@ const HeroSection: React.FC = () => {
           </div>
         )}
 
-        <div className="relative z-10 mt-1 flex items-center gap-2 text-xs text-white/80 font-medium">
-          <span>Built with heart by</span>
-          <a
-            href="https://www.linkedin.com/in/manoj07ar/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-white transition hover:bg-white/30"
-          >
-            Manoj
-          </a>
+        <div className="relative z-10 mt-1 flex items-center gap-2 text-xs font-medium text-white/80">
+          <span className="rounded-full bg-white/15 px-3 py-1">
+            Amazon Nova hackathon build
+          </span>
+          <span>Transcript preview, SOAP notes, and grounded patient chat.</span>
         </div>
       </div>
     </section>
