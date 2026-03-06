@@ -22,6 +22,13 @@ It turns clinician-patient visit transcripts into structured clinical outputs an
 
 This build is intentionally simplified for speed and reliability.
 
+## Hackathon Readiness
+
+- Recommended Devpost category: `Agentic AI`
+- Submission deadline: March 16, 2026 at 5:00 PM PDT
+- Public repo: `https://github.com/Manoj7ar/Synth-Hackathon`
+- Demo credentials: `admin@synth.health` / `synth2025`
+
 ## Hackathon Pivot (What Changed)
 
 This repo was refocused to optimize for a lean, demoable Generative AI submission:
@@ -196,7 +203,7 @@ flowchart TB
 ### Health endpoint
 
 - `src/app/api/health/route.ts`
-  - readiness-style check for DB env + Nova config presence
+  - readiness check for DB connectivity + Nova config presence
 
 ## Project Structure (Key Files)
 
@@ -226,7 +233,6 @@ src/
     clinical-notes.ts            # summary + SOAP generation
     clinical-entities.ts         # local extraction heuristics
     prisma.ts                    # native Prisma runtime client
-    gemini.ts                    # temporary compatibility shim backed by Nova
 ```
 
 ## Environment Variables
@@ -380,6 +386,12 @@ Check:
 ### `/api/health` shows `novaConfigured=false`
 
 - `AWS_REGION` is missing in runtime env
+
+### `/api/health` shows `databaseReachable=false`
+
+- verify `DATABASE_URL` and `DIRECT_URL`
+- confirm Prisma migrations have been applied
+- confirm the app can reach the PostgreSQL instance from the current network
 
 ### Database connection errors
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { grainTextureStyle } from "@/lib/decorative-backgrounds";
 
 const marqueeCards = [
   {
@@ -19,7 +20,7 @@ const marqueeCards = [
   {
     label: "Analytics",
     title: "Trends across visits and cohorts",
-    body: "Surface patterns like symptom trends and medication changes with Elasticsearch-powered aggregations.",
+    body: "Track blood pressure, follow-up tasks, and care patterns across visits with grounded visit-linked data.",
   },
   {
     label: "Workflows",
@@ -51,11 +52,7 @@ const WhySynth = () => {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 z-0 opacity-20"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/noise-3.png')",
-          backgroundRepeat: "repeat",
-        }}
+        style={grainTextureStyle}
       />
       <div className="container relative z-10 mx-auto px-6">
         <div className="mb-16 text-center space-y-6">

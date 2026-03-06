@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Bot, ClipboardList, FileAudio, ShieldCheck } from "lucide-react";
+import { grainTextureStyle } from "@/lib/decorative-backgrounds";
 
 const steps = [
   {
@@ -50,11 +51,7 @@ export default function HowItWorksPage() {
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[2] pointer-events-none opacity-20"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/noise-3.png')",
-          backgroundRepeat: "repeat",
-        }}
+        style={grainTextureStyle}
       />
       <nav className="fixed top-3 left-1/2 z-50 w-fit -translate-x-1/2">
         <div className="flex items-center rounded-full border border-slate-900/10 bg-[#fff8ea]/85 p-1.5 shadow-[0_10px_30px_rgba(75,50,20,0.15)] backdrop-blur-md">

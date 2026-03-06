@@ -481,7 +481,7 @@ export function SoapNoteRenderer({ content, visitId, patientName }: SoapNoteRend
               </div>
               <div>
                 <p className="text-sm font-bold tracking-wide text-blue-900">AI EXTRACTED SIGNALS</p>
-                <p className="text-xs text-blue-700">Powered by Elasticsearch ML</p>
+                <p className="text-xs text-blue-700">Reviewable note signals generated from visit content</p>
               </div>
               <div className="ml-auto text-right">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-blue-700">Confidence</p>

@@ -591,7 +591,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
 
             <div className="rounded-3xl border border-[#eadfcd] bg-white/80 p-5 shadow-[0_12px_30px_rgba(84,63,31,0.10)] backdrop-blur-xl md:p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Live ML Signals
+                Live Clinical Signals
               </p>
               {liveEntities.length > 0 ? (
                 <div className="mt-5 flex flex-wrap gap-2.5">
@@ -627,7 +627,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
               Recorder Controls
             </p>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Start recording to capture a visit, then stop to run AI transcription.
+              Start recording to capture a visit, then stop to process and review the transcript.
             </p>
           </div>
 
@@ -700,7 +700,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
           {liveEntities.length > 0 && (
             <div className="mt-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                Live ML Signals
+                Live Clinical Signals
               </p>
               <div className="mt-3.5 flex flex-wrap gap-2.5">
                 {liveEntities.map((entity) => (
