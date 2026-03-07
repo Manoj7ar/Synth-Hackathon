@@ -1,5 +1,18 @@
 import { NextResponse } from 'next/server'
-import { getAppVersion, isNovaConfigured } from '@/lib/config'
+import {
+  allowLegacyCredentialsAuth,
+  getAppName,
+  getAppVersion,
+  getNextAuthUrl,
+  getPublicAppUrl,
+  getUploadsBucketName,
+  isAuthConfigured,
+  isAwsTranscribeConfigured,
+  isCognitoConfigured,
+  isNovaConfigured,
+  isPublicUrlConfigured,
+  isUploadsBucketConfigured,
+} from '@/lib/config'
 import { getPrismaDatabaseUrl, prisma } from '@/lib/prisma'
 
 export async function GET() {
@@ -16,17 +29,33 @@ export async function GET() {
   }
 
   const novaConfigured = isNovaConfigured()
-  const ok = databaseReachable && novaConfigured
+  const authConfigured = isAuthConfigured()
+  const publicUrlConfigured = isPublicUrlConfigured()
+  const uploadsBucketConfigured = isUploadsBucketConfigured()
+  const cognitoConfigured = isCognitoConfigured()
+  const transcribeConfigured = isAwsTranscribeConfigured()
+  const ok = databaseReachable && novaConfigured && authConfigured && publicUrlConfigured
 
   return NextResponse.json(
     {
       ok,
-      service: 'synth-nova',
+      service: getAppName(),
       version: getAppVersion(),
       checks: {
         databaseEnvPresent,
         databaseReachable,
         novaConfigured,
+        authConfigured,
+        publicUrlConfigured,
+        uploadsBucketConfigured,
+        cognitoConfigured,
+        transcribeConfigured,
+        legacyCredentialsEnabled: allowLegacyCredentialsAuth(),
+      },
+      config: {
+        nextauthUrl: getNextAuthUrl() ?? null,
+        publicAppUrl: getPublicAppUrl() ?? null,
+        uploadsBucket: getUploadsBucketName() ?? null,
       },
       timestamp: new Date().toISOString(),
     },

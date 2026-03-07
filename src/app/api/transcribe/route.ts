@@ -1,9 +1,10 @@
-﻿import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isNovaConfigured } from '@/lib/nova'
+import { isAwsTranscribeConfigured, isNovaConfigured } from '@/lib/config'
+import { transcribeAudioFile } from '@/lib/transcribe'
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
@@ -20,17 +21,33 @@ export async function POST() {
       )
     }
 
-    return NextResponse.json(
-      {
-        error:
-          'Server audio transcription is not available in this environment. Use the browser live transcript in /transcribe, or paste a transcript into the landing preview flow.',
-      },
-      { status: 503 }
-    )
+    if (!isAwsTranscribeConfigured()) {
+      return NextResponse.json(
+        {
+          error:
+            'AWS Transcribe is not configured. Set AWS_REGION and S3_BUCKET_AUDIO_UPLOADS for server-side transcription.',
+        },
+        { status: 503 }
+      )
+    }
+
+    const formData = await req.formData()
+    const audio = formData.get('audio')
+
+    if (!(audio instanceof File)) {
+      return NextResponse.json({ error: 'Audio file is required.' }, { status: 400 })
+    }
+
+    const result = await transcribeAudioFile(audio)
+
+    return NextResponse.json({
+      success: true,
+      transcript: result.transcript,
+      duration_ms: result.duration_ms,
+    })
   } catch (error) {
     console.error('Transcribe error:', error)
     const message = error instanceof Error ? error.message : 'Transcription failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-

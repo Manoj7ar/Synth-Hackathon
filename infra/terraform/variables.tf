@@ -106,6 +106,30 @@ variable "bedrock_nova_fast_model_id" {
   default = "amazon.nova-micro-v1:0"
 }
 
+variable "cognito_issuer" {
+  type        = string
+  default     = ""
+  description = "Amazon Cognito issuer URL for NextAuth"
+}
+
+variable "cognito_client_id" {
+  type        = string
+  default     = ""
+  description = "Amazon Cognito app client ID"
+}
+
+variable "allow_legacy_credentials" {
+  type        = bool
+  default     = false
+  description = "Allow local credentials auth alongside Cognito"
+}
+
+variable "transcribe_language_code" {
+  type        = string
+  default     = "en-US"
+  description = "AWS Transcribe language code for server-side transcription"
+}
+
 variable "nextauth_url" {
   type        = string
   description = "Public URL used by NextAuth (e.g. https://app.example.com)"

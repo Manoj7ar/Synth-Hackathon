@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { NextResponse } from 'next/server'
 import { createPrismaClient, prisma } from '@/lib/prisma'
 import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
+import { allowLegacyCredentialsAuth, isCognitoConfigured } from '@/lib/config'
 
 function normalizeEmail(value: unknown) {
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -35,6 +36,7 @@ async function createAccountWithClient(
       passwordHash,
       role: 'clinician',
       name: input.name,
+      authProvider: 'credentials',
     },
     select: {
       id: true,
@@ -45,7 +47,6 @@ async function createAccountWithClient(
   try {
     await ensureSarahDemoSoapNoteForClinician(client, user.id)
   } catch (error) {
-    // Signup should not fail if demo data creation has a transient issue.
     console.warn('Unable to create Sarah demo SOAP note for new clinician:', error)
   }
 
@@ -53,6 +54,13 @@ async function createAccountWithClient(
 }
 
 export async function POST(req: Request) {
+  if (isCognitoConfigured() && !allowLegacyCredentialsAuth()) {
+    return NextResponse.json(
+      { error: 'Account creation is managed through Amazon Cognito in this environment.' },
+      { status: 403 }
+    )
+  }
+
   let parsedInput: { name: string; email: string; password: string } | null = null
 
   try {
@@ -97,7 +105,7 @@ export async function POST(req: Request) {
       errorCode === 'P1001' ||
       errorCode === 'P1000' ||
       errorCode === '57P01' ||
-      /database|connection|supabase/i.test(errorMessage)
+      /database|connection/i.test(errorMessage)
     ) {
       try {
         const retryClient = createPrismaClient()

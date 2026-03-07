@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { useEffect, useState } from 'react'
+import { getProviders, signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,9 +21,12 @@ import {
 
 type AuthMode = 'signin' | 'signup'
 
+type ProviderMap = Record<string, { id: string; name: string }>
+
 export default function LoginPage() {
   const router = useRouter()
   const [mode, setMode] = useState<AuthMode>('signin')
+  const [providers, setProviders] = useState<ProviderMap>({})
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -36,6 +39,23 @@ export default function LoginPage() {
   const [signupConfirm, setSignupConfirm] = useState('')
   const [signUpError, setSignUpError] = useState('')
 
+  useEffect(() => {
+    let active = true
+    getProviders()
+      .then((result) => {
+        if (!active) return
+        setProviders((result ?? {}) as ProviderMap)
+      })
+      .catch(() => {
+        if (!active) return
+        setProviders({})
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   async function parseErrorMessage(res: Response, fallback: string) {
     try {
       const data = (await res.json()) as { error?: unknown }
@@ -43,6 +63,16 @@ export default function LoginPage() {
     } catch {
       return fallback
     }
+  }
+
+  const cognitoEnabled = Boolean(providers.cognito)
+  const credentialsEnabled = Boolean(providers.credentials)
+
+  const handleCognitoSignIn = async () => {
+    setLoading(true)
+    setSignInError('')
+    setSignUpError('')
+    await signIn('cognito', { callbackUrl: '/clinician' })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -173,40 +203,64 @@ export default function LoginPage() {
               AI-powered medical visit assistant
             </CardDescription>
 
-            <div className="mt-4 grid grid-cols-2 rounded-xl bg-white/10 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signin')
-                  setSignUpError('')
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                  mode === 'signin'
-                    ? 'bg-white text-slate-900 shadow-md'
-                    : 'text-white/80 hover:text-white'
-                }`}
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signup')
-                  setSignInError('')
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                  mode === 'signup'
-                    ? 'bg-white text-slate-900 shadow-md'
-                    : 'text-white/80 hover:text-white'
-                }`}
-              >
-                Sign Up
-              </button>
-            </div>
+            {!cognitoEnabled && credentialsEnabled && (
+              <div className="mt-4 grid grid-cols-2 rounded-xl bg-white/10 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin')
+                    setSignUpError('')
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    mode === 'signin'
+                      ? 'bg-white text-slate-900 shadow-md'
+                      : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup')
+                    setSignInError('')
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    mode === 'signup'
+                      ? 'bg-white text-slate-900 shadow-md'
+                      : 'text-white/80 hover:text-white'
+                  }`}
+                >
+                  Sign Up
+                </button>
+              </div>
+            )}
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {mode === 'signin' ? (
+            {cognitoEnabled ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-4 text-sm leading-6 text-slate-100/90">
+                  Authentication is managed through Amazon Cognito in this environment.
+                  Continue to Cognito to sign in or create your clinician account.
+                </div>
+
+                {(signInError || signUpError) && (
+                  <div className="rounded-lg border border-red-300/40 bg-red-500/20 p-3 text-sm text-red-100">
+                    {signInError || signUpError}
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={handleCognitoSignIn}
+                  className="w-full bg-sky-400 font-semibold text-slate-900 hover:bg-sky-300"
+                  disabled={loading}
+                >
+                  {loading ? 'Redirecting...' : 'Continue with Cognito'}
+                </Button>
+              </div>
+            ) : mode === 'signin' ? (
               <>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-1.5">
@@ -334,7 +388,7 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                  <Button
+                <Button
                   type="submit"
                   className="w-full bg-sky-400 font-semibold text-slate-900 hover:bg-sky-300"
                   disabled={loading}

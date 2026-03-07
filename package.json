@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.998.0",
+    "@aws-sdk/client-s3": "^3.1004.0",
+    "@aws-sdk/client-transcribe": "^3.1004.0",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

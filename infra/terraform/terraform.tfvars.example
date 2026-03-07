@@ -10,10 +10,16 @@ app_image_uri      = "123456789012.dkr.ecr.us-east-1.amazonaws.com/synth-nova-ha
 nextauth_url       = "https://your-app.example.com"
 next_public_app_url = "https://your-app.example.com"
 
+# Cognito (optional until Phase 2 auth cutover)
+cognito_issuer     = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example"
+cognito_client_id  = "your-cognito-app-client-id"
+allow_legacy_credentials = false
+
 # DB
 db_password = "change-me"
 
 # Optional overrides
 bedrock_nova_text_model_id = "amazon.nova-lite-v1:0"
 bedrock_nova_fast_model_id = "amazon.nova-micro-v1:0"
+transcribe_language_code   = "en-US"
 

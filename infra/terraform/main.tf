@@ -204,7 +204,9 @@ resource "aws_iam_role_policy" "bedrock_access" {
         Effect = "Allow"
         Action = [
           "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream"
+          "bedrock:InvokeModelWithResponseStream",
+          "transcribe:StartTranscriptionJob",
+          "transcribe:GetTranscriptionJob"
         ]
         Resource = "*"
       },
@@ -297,9 +299,14 @@ resource "aws_ecs_task_definition" "app" {
         }
       }
       environment = [
+        { name = "APP_NAME", value = var.project_name },
         { name = "AWS_REGION", value = var.aws_region },
         { name = "BEDROCK_NOVA_TEXT_MODEL_ID", value = var.bedrock_nova_text_model_id },
         { name = "BEDROCK_NOVA_FAST_MODEL_ID", value = var.bedrock_nova_fast_model_id },
+        { name = "COGNITO_ISSUER", value = var.cognito_issuer },
+        { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
+        { name = "ALLOW_LEGACY_CREDENTIALS", value = tostring(var.allow_legacy_credentials) },
+        { name = "TRANSCRIBE_LANGUAGE_CODE", value = var.transcribe_language_code },
         { name = "NEXTAUTH_URL", value = var.nextauth_url },
         { name = "NEXT_PUBLIC_APP_URL", value = var.next_public_app_url },
         { name = "S3_BUCKET_AUDIO_UPLOADS", value = aws_s3_bucket.uploads.bucket },
@@ -307,7 +314,8 @@ resource "aws_ecs_task_definition" "app" {
       secrets = [
         { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.app_env.arn}:DATABASE_URL::" },
         { name = "DIRECT_URL", valueFrom = "${aws_secretsmanager_secret.app_env.arn}:DIRECT_URL::" },
-        { name = "NEXTAUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app_env.arn}:NEXTAUTH_SECRET::" }
+        { name = "NEXTAUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app_env.arn}:NEXTAUTH_SECRET::" },
+        { name = "COGNITO_CLIENT_SECRET", valueFrom = "${aws_secretsmanager_secret.app_env.arn}:COGNITO_CLIENT_SECRET::" }
       ]
     }
   ])

@@ -11,6 +11,7 @@ declare module 'next-auth' {
       specialty?: string | null
       onboardingCompletedAt?: string | null
       onboardingComplete?: boolean
+      authProvider?: string
       image?: string | null
     }
   }
@@ -22,6 +23,9 @@ declare module 'next-auth' {
 
 declare module 'next-auth/jwt' {
   interface JWT {
+    userId?: string
     role?: string
+    cognitoSub?: string
+    authProvider?: string
   }
 }

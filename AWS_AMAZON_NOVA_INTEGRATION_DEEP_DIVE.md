@@ -2,35 +2,63 @@
 
 ## Overview
 
-This document explains how Synth uses AWS and Amazon Nova to power clinical documentation, grounded chat, and deployment infrastructure.
+This document explains how Synth uses AWS to deliver authentication, transcription, generation, storage, and deployment for the current codebase.
 
 It covers:
 
-- the Nova integration in code
-- the runtime request flow
-- the PostgreSQL + Prisma data layer
-- the AWS infrastructure scaffold
-- environment and deployment requirements
-- current operational boundaries for the demo
+- Amazon Nova integration
+- Cognito-backed authentication
+- AWS Transcribe server audio processing
+- PostgreSQL + Prisma runtime behavior
+- ECS / RDS / S3 / Secrets Manager deployment shape
+- runtime configuration and deployment requirements
 
-Synth is designed as an AWS-native application path: Next.js on ECS, Amazon Bedrock for model inference, PostgreSQL on RDS, and Secrets Manager for runtime configuration.
+Synth now supports a full AWS-first application path:
+
+- Cognito for clinician identity
+- AWS Transcribe for server-side audio transcription
+- Bedrock / Nova for summary, SOAP, assistant, and grounded chat generation
+- RDS for application data
+- ECS Fargate for runtime hosting
 
 ## System Summary
 
-Synth uses Amazon Nova through Amazon Bedrock for its core AI tasks:
+Synth uses AWS services in four main layers:
 
-- visit summary generation
+### 1. Identity
+
+- Amazon Cognito is the primary clinician auth provider when configured.
+- NextAuth remains the session layer in the app.
+- Prisma stores the application user record and links Cognito users by `cognitoSub`.
+- Credentials auth can still be allowed for local or fallback environments via `ALLOW_LEGACY_CREDENTIALS`.
+
+### 2. AI generation
+
+Amazon Nova through Bedrock powers:
+
+- conversation summaries
 - SOAP note generation
-- grounded clinician and patient chat
+- grounded clinician chat
+- grounded patient chat
+- report generation
 - in-app assistant responses
-- generated visit report content
 
-The integration is intentionally simple:
+### 3. Audio transcription
 
-- one shared Bedrock client wrapper
-- environment-driven model selection
-- deterministic fallbacks when AI generation fails
-- a standard PostgreSQL application backend without external search infrastructure
+AWS Transcribe powers server-side audio transcription:
+
+- upload audio to S3
+- start a transcription job
+- retrieve transcript output
+- normalize output into the app’s `TranscriptSegment` structure
+- pass transcript segments into the existing clinical documentation pipeline
+
+### 4. Application runtime
+
+- Next.js runs on ECS Fargate
+- PostgreSQL runs on RDS
+- runtime secrets come from Secrets Manager
+- logs go to CloudWatch
 
 ## High-Level Architecture
 
@@ -44,22 +72,27 @@ flowchart TB
 
   subgraph APP[Next.js App Router]
     APP_RUNTIME[API Runtime]
+    AUTH[NextAuth + Cognito]
     PREVIEW["/api/landing/soap-preview"]
+    TRANSCRIBE["/api/transcribe"]
     SAVE["/api/transcribe/save"]
     CHAT["/api/chat"]
     ASSIST["/api/assistant"]
     FINALIZE["/api/finalize-visit"]
     HEALTH["/api/health"]
-    AUTH[NextAuth]
   end
 
   subgraph AI[Amazon Bedrock]
     NOVA[Amazon Nova]
   end
 
-  subgraph DATA[Application Data]
+  subgraph SPEECH[AWS Speech]
+    TRANSCRIBE_SVC[AWS Transcribe]
+  end
+
+  subgraph DATA[AWS Data Layer]
     RDS[(PostgreSQL / RDS)]
-    S3[(S3 optional)]
+    S3[(S3)]
     SECRETS[Secrets Manager]
   end
 
@@ -75,194 +108,164 @@ flowchart TB
   PATIENT --> ALB
   ALB --> ECS
   ECS --> APP_RUNTIME
+
+  APP_RUNTIME --> AUTH
   APP_RUNTIME --> PREVIEW
+  APP_RUNTIME --> TRANSCRIBE
   APP_RUNTIME --> SAVE
   APP_RUNTIME --> CHAT
   APP_RUNTIME --> ASSIST
   APP_RUNTIME --> FINALIZE
   APP_RUNTIME --> HEALTH
-  APP_RUNTIME --> AUTH
+
   PREVIEW --> NOVA
   SAVE --> NOVA
   CHAT --> NOVA
   ASSIST --> NOVA
+
+  TRANSCRIBE --> S3
+  TRANSCRIBE --> TRANSCRIBE_SVC
+
+  AUTH --> RDS
+  SAVE --> RDS
   FINALIZE --> RDS
   CHAT --> RDS
-  SAVE --> RDS
-  AUTH --> RDS
+
+  APP_RUNTIME --> SECRETS
   APP_RUNTIME --> S3
   ECS --> CW
-  ECS --> SECRETS
   ECR --> ECS
 ```
 
 ## Where Amazon Nova Is Used
 
-### 1. Visit summary generation
+### Visit summary generation
 
 File: `src/lib/clinical-notes.ts`
 
-`generateConversationSummary(...)` formats transcript segments into a timed doctor/patient transcript and sends a concise summarization prompt to Amazon Nova.
+`generateConversationSummary(...)` formats speaker-timed transcript segments and sends them to Amazon Nova. If Nova fails, the app falls back to deterministic summary generation.
 
-If Nova is unavailable, the app falls back to a deterministic summary built from transcript segments.
-
-### 2. SOAP note generation
+### SOAP note generation
 
 File: `src/lib/clinical-notes.ts`
 
-`generateSoapNotesFromTranscript(...)` sends the transcript to Nova with a structured prompt that requests strict SOAP formatting:
+`generateSoapNotesFromTranscript(...)` prompts Nova to produce a structured SOAP note from transcript segments. If Nova fails, the app returns a deterministic SOAP scaffold.
 
-- Subjective
-- Objective
-- Assessment
-- Plan
-
-If Nova fails, the app returns a deterministic SOAP scaffold using extracted transcript content.
-
-### 3. Grounded clinician and patient chat
+### Grounded chat
 
 File: `src/app/api/chat/route.ts`
 
-The chat runtime loads visit context from PostgreSQL, then builds a grounded prompt from:
+The chat runtime loads visit context from PostgreSQL and generates grounded clinician or patient responses from:
 
-- summary
-- SOAP notes
 - transcript
+- summary
+- SOAP note
 - additional notes
 - appointments
 - care plan items
 - blood pressure history
 
-Nova generates the response text. The route then streams the output over SSE and attaches:
+Responses stream over SSE and may include citations, source details, and blood pressure visualizations.
 
-- tool trace events
-- citations
-- source details
-- blood pressure trend visualization when relevant
-
-### 4. Landing page transcript preview
-
-File: `src/app/api/landing/soap-preview/route.ts`
-
-The landing page accepts transcript text or a transcript file, parses it into transcript segments, and uses Nova to generate:
-
-- summary
-- SOAP note preview
-
-This is the fastest public-facing demo path in the app.
-
-### 5. Assistant and report generation
+### Assistant and report generation
 
 Files:
 
 - `src/app/api/assistant/route.ts`
 - `src/app/api/soap-actions/[visitId]/report/route.ts`
 
-These routes also rely on the Nova provider layer for response generation.
+These routes also use the shared Nova provider layer.
 
-## Nova Provider Layer
-
-### Core file
+## Bedrock Provider Layer
 
 File: `src/lib/nova.ts`
-
-This file is the single shared Bedrock integration point.
 
 Responsibilities:
 
 - initialize `BedrockRuntimeClient`
-- create `ConverseCommand` requests
-- normalize the Bedrock response payload into plain text
-- expose high-level helper functions to the rest of the app
+- send `ConverseCommand` requests
+- normalize Bedrock responses into plain text
+- expose shared generation helpers
 
-### Exported API
+Exported API:
 
 - `generateNovaText(...)`
 - `generateNovaTextFromMessages(...)`
 - `isNovaConfigured()`
 
-### Request model behavior
+Defaults:
 
-The integration currently uses:
+- text model: `amazon.nova-lite-v1:0`
+- fast model: `amazon.nova-micro-v1:0`
 
-- `ConverseCommand` from `@aws-sdk/client-bedrock-runtime`
+## Cognito Authentication
 
-That gives the project one clean invocation path for both prompt-based and message-based workflows.
+Files:
 
-### Model selection
+- `src/lib/auth.ts`
+- `src/app/login/page.tsx`
+- `src/types/next-auth.d.ts`
 
-By default:
+### Auth model
 
-- `generateNovaText(...)` uses the fast model path
-- `generateNovaTextFromMessages(...)` uses the main text model path
+The app uses NextAuth as the session and callback layer, with Cognito as the primary identity provider when configured.
 
-Model IDs are resolved from environment variables through `src/lib/config.ts`.
+Behavior:
 
-## Configuration Layer
+- if Cognito config is present, the Cognito provider is enabled
+- if Cognito is not configured, credentials auth remains available
+- if Cognito is configured and `ALLOW_LEGACY_CREDENTIALS=true`, both auth modes are allowed
 
-File: `src/lib/config.ts`
+### User linking
 
-This module centralizes AWS and model configuration:
+On Cognito sign-in:
 
-- `AWS_REGION`
-- `BEDROCK_NOVA_TEXT_MODEL_ID`
-- `BEDROCK_NOVA_FAST_MODEL_ID`
+- the app reads the Cognito provider account ID
+- links an existing Prisma `User` by `cognitoSub`
+- or links by email if a local user already exists
+- or creates a new `User` row if neither exists
 
-It also powers readiness checks used by the app and health endpoints.
+Prisma `User` fields now support:
 
-Expected defaults from `.env.example`:
+- `cognitoSub`
+- `authProvider`
+- nullable `passwordHash`
 
-- `amazon.nova-lite-v1:0`
-- `amazon.nova-micro-v1:0`
+This keeps Cognito responsible for identity while Prisma remains the source of application user metadata, onboarding state, visit ownership, and role data.
 
-## End-to-End Runtime Flows
+## AWS Transcribe Integration
 
-### Transcript to saved visit
+Files:
 
-```mermaid
-sequenceDiagram
-  participant C as Clinician
-  participant API as /api/transcribe/save
-  participant N as Amazon Nova
-  participant DB as PostgreSQL
+- `src/lib/transcribe.ts`
+- `src/app/api/transcribe/route.ts`
+- `src/components/transcribe/TranscribeRecorder.tsx`
 
-  C->>API: transcript + visit data
-  API->>N: summarize transcript
-  API->>N: generate SOAP note
-  N-->>API: summary + SOAP
-  API->>DB: save patient, visit, documentation
-  API-->>C: visit id + saved workflow state
-```
+### Runtime flow
 
-### Patient share chat
+1. Browser records audio.
+2. The app posts the audio file to `POST /api/transcribe`.
+3. The server uploads the file to S3.
+4. The server starts an AWS Transcribe job.
+5. The app polls AWS Transcribe for completion.
+6. The returned transcript JSON is normalized into `TranscriptSegment[]`.
+7. The UI then saves the transcript through the existing visit documentation flow.
 
-```mermaid
-sequenceDiagram
-  participant P as Patient
-  participant CHAT as /api/chat
-  participant DB as PostgreSQL
-  participant N as Amazon Nova
+### Normalization behavior
 
-  P->>CHAT: question + visit ids + share token
-  CHAT->>DB: validate share token and load visit context
-  CHAT->>N: grounded prompt from visit data
-  N-->>CHAT: response text
-  CHAT-->>P: streamed answer + citations + optional BP chart
-```
+The Transcribe adapter:
+
+- detects media format from file name or MIME type
+- requests speaker labels
+- maps speaker labels into `patient` / `clinician`
+- groups transcription items into coherent transcript segments
+- falls back to sentence splitting if detailed speaker output is missing
 
 ## Data Layer
 
-### Runtime access
-
-File: `src/lib/prisma.ts`
-
-Synth uses native Prisma for database access. The AWS target is PostgreSQL on RDS or Aurora PostgreSQL.
-
-### Core entities
-
 File: `prisma/schema.prisma`
 
-The main domain model includes:
+Core entities:
 
 - `User`
 - `Patient`
@@ -273,13 +276,24 @@ The main domain model includes:
 - `CarePlanItem`
 - `GeneratedReport`
 
-This model supports the full demo story:
+The current schema supports both AWS identity integration and persisted clinical workflows without splitting user identity into a separate application data model.
 
-- capture a visit
-- generate documentation
-- finalize it
-- share it with the patient
-- answer follow-up questions from persisted records
+## Health and Readiness
+
+File: `src/app/api/health/route.ts`
+
+The health endpoint now reports:
+
+- database reachability
+- Nova configuration
+- auth configuration
+- public URL configuration
+- uploads bucket wiring
+- Cognito configuration state
+- Transcribe configuration state
+- whether legacy credentials auth is enabled
+
+This is also the ALB health check endpoint in Terraform.
 
 ## AWS Infrastructure Scaffold
 
@@ -289,57 +303,54 @@ Terraform files:
 - `infra/terraform/variables.tf`
 - `infra/terraform/outputs.tf`
 - `infra/terraform/terraform.tfvars.example`
-- `infra/terraform/README.md`
 
-### Provisioned resource set
+### Provisioned resources
 
-The scaffold defines a practical hackathon deployment baseline:
+The scaffold includes:
 
 - ECR repository
 - ECS cluster
 - ECS task definition and Fargate service
-- ALB, target group, and listener
+- ALB, listener, and target group
 - CloudWatch log group
 - RDS PostgreSQL instance
 - DB subnet group
 - security groups
 - Secrets Manager secret
-- optional S3 bucket
-- IAM task execution and runtime access roles
+- S3 bucket
+- IAM roles and policies
+
+### Runtime environment injection
+
+Terraform injects:
+
+- AWS region
+- Nova model IDs
+- public app URLs
+- Cognito issuer and client ID
+- Transcribe language code
+- uploads bucket name
+- legacy credentials toggle
+
+Secrets Manager provides:
+
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `NEXTAUTH_SECRET`
+- `COGNITO_CLIENT_SECRET`
 
 ### IAM expectations
 
-The application runtime needs AWS permissions for:
+The ECS task role needs access for:
 
 - `bedrock:InvokeModel`
 - `bedrock:InvokeModelWithResponseStream`
-- reading from Secrets Manager
-- optional S3 access
-
-The Terraform scaffold includes these access paths for the ECS task role.
-
-## Containerization
-
-### Docker
-
-File: `Dockerfile`
-
-The application is prepared for container deployment with:
-
-- a multi-stage build
-- Prisma generation during install
-- Next.js standalone output
-- a lightweight runtime image
-
-### Next.js output mode
-
-File: `next.config.ts`
-
-The app uses:
-
-- `output: "standalone"`
-
-This is the correct path for ECS container deployment.
+- `transcribe:StartTranscriptionJob`
+- `transcribe:GetTranscriptionJob`
+- `secretsmanager:GetSecretValue`
+- `s3:GetObject`
+- `s3:PutObject`
+- `s3:ListBucket`
 
 ## Environment Contract
 
@@ -352,80 +363,37 @@ DIRECT_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
 AWS_REGION=us-east-1
 BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
 BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
+TRANSCRIBE_LANGUAGE_CODE=en-US
 
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
+
+COGNITO_ISSUER=
+COGNITO_CLIENT_ID=
+COGNITO_CLIENT_SECRET=
+ALLOW_LEGACY_CREDENTIALS=false
 
 NEXTAUTH_SECRET=...
 NEXTAUTH_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Required for local development
+### Minimum AWS requirements
 
-- PostgreSQL connection strings
+For the full AWS-native path, the deployed environment needs:
+
+- RDS connection strings
 - AWS region
-- Bedrock model IDs
-- AWS credentials with Bedrock access
-- NextAuth secret
-
-### Required for ECS runtime
-
-At minimum, the deployed app needs:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET`
-- `AWS_REGION`
 - Nova model IDs
-- public URL values for auth and app routing
-
-For deployed AWS environments, IAM task roles are preferable to static keys.
-
-## Bedrock and Account Requirements
-
-Even with correct code and infrastructure, Amazon Nova calls will fail unless:
-
-- Bedrock is enabled in the target AWS account
-- the selected AWS region supports the chosen Nova models
-- model access is granted in Bedrock model access settings
-- the ECS task role can invoke Bedrock
-
-## Health and Readiness
-
-File: `src/app/api/health/route.ts`
-
-The health endpoint is intended to quickly verify:
-
-- database reachability
-- Nova configuration presence
-- general application readiness
-
-It is also used as the ALB health check target in the Terraform scaffold.
-
-## Demo Scope Boundaries
-
-The current application is optimized for documentation and grounded follow-up workflows.
-
-Important boundary:
-
-- server-side audio transcription is not active in this build
-
-What the product does support today:
-
-- transcript text input
-- transcript file input
-- browser-assisted transcript workflow
-- Nova-based summary generation
-- Nova-based SOAP generation
-- grounded saved-visit chat
-
-This keeps the demo stable and focused on the core Bedrock + Nova story.
+- S3 uploads bucket
+- NextAuth secret
+- public app URLs
+- Cognito issuer, client ID, and client secret
 
 ## Deployment Runbook
 
-### 1. Install dependencies and verify locally
+### 1. Install and verify locally
 
 ```bash
 npm install
@@ -435,7 +403,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-### 2. Build and push the container image
+### 2. Build and push the image
 
 Use:
 
@@ -443,13 +411,14 @@ Use:
 
 ### 3. Configure Terraform variables
 
-Populate:
+Set:
 
-- VPC ID
-- public and private subnet IDs
-- app image URI
+- VPC and subnet IDs
+- image URI
 - database password
-- public application URLs
+- app URLs
+- Cognito values if using Cognito
+- Transcribe language code if overriding default
 
 ### 4. Apply Terraform
 
@@ -461,95 +430,103 @@ terraform plan
 terraform apply
 ```
 
-### 5. Add secret values
+### 5. Write runtime secrets
 
-Write runtime secrets into the Secrets Manager secret used by the ECS task.
+Use:
+
+- `scripts/deploy/set-app-secrets.ps1`
 
 ### 6. Run Prisma migrations
 
 Recommended:
 
-- `npx prisma migrate deploy`
+```bash
+npx prisma migrate deploy
+```
 
-This can run from a one-off ECS task or CI/CD environment with database access.
-
-### 7. Validate the deployed app
+### 7. Validate the deployment
 
 Check:
 
 - `/api/health`
-- login flow
+- Cognito sign-in if configured
+- fallback credentials sign-in if enabled
 - landing transcript preview
+- server audio transcription
 - clinician save flow
 - patient share chat
 
 ## Troubleshooting
 
-### Nova configuration errors
+### Cognito is not appearing on `/login`
+
+Check:
+
+- `COGNITO_ISSUER`
+- `COGNITO_CLIENT_ID`
+- `COGNITO_CLIENT_SECRET`
+- NextAuth callback URLs in Cognito
+
+### Cognito sign-in works but no app user is found
+
+Check:
+
+- Prisma migration for `cognitoSub` / `authProvider`
+- email consistency between Cognito and Prisma
+- database write permissions
+
+### AWS Transcribe route returns configuration errors
 
 Check:
 
 - `AWS_REGION`
-- Bedrock model IDs
-- IAM permissions
-- Bedrock model access in the AWS account
+- `S3_BUCKET_AUDIO_UPLOADS`
+- ECS task IAM permissions for Transcribe and S3
 
-### Empty or fallback AI responses
+### Nova generation fails
 
-Likely causes:
+Check:
 
-- Bedrock permissions missing
-- Bedrock access not enabled
-- wrong model or region pairing
-- runtime environment values missing
+- Bedrock access enabled
+- valid model IDs for the target region
+- task IAM permissions
 
-### Database connection failures
+### Database connection fails
 
 Check:
 
 - `DATABASE_URL`
 - `DIRECT_URL`
-- security group rules on port `5432`
-- subnet routing and connectivity
-- RDS instance status
-
-### ECS app starts but AI routes fail
-
-This usually means infrastructure is up but Bedrock access is not fully configured.
-
-### Health check failures
-
-Check:
-
-- database access
-- env var injection
-- app port and listener configuration
-- ALB target group health path
+- RDS security group rules
+- subnet routing
+- migration status
 
 ## Practical Readiness Status
 
-Current status of the codebase:
+Implemented in the codebase:
 
-- Bedrock integration is implemented
-- Nova-backed generation paths are wired through the app
-- Prisma + PostgreSQL runtime is implemented
-- Docker packaging is in place
-- Terraform deployment scaffold is in place
+- Cognito-ready auth flow
+- Transcribe-backed server audio transcription
+- Nova-backed generation
+- Prisma + PostgreSQL runtime
+- ECS/RDS/S3/Secrets Manager deployment scaffold
 
-What still depends on environment setup:
+Still dependent on environment setup:
 
-- real AWS networking values
-- Bedrock account access
-- runtime secrets
+- actual AWS account configuration
+- Bedrock access
+- Cognito app client setup
+- Secrets Manager values
 - deployed database migrations
-- public deployment configuration
+- live AWS infrastructure rollout
 
 ## Bottom Line
 
-Synth already has the application-level AWS and Amazon Nova integration needed for a strong hackathon deployment:
+Synth now has a credible full AWS-native application path:
 
-- Nova powers the core documentation and chat workflows
-- AWS infrastructure is scaffolded for ECS + RDS deployment
-- the runtime model is simple enough to deploy quickly
+- Cognito for clinician identity
+- AWS Transcribe for server audio transcription
+- Bedrock / Nova for clinical generation
+- ECS + RDS + S3 + Secrets Manager for runtime and data
 
-Once AWS account access, secrets, networking, and migrations are configured, the app is ready for an end-to-end demo on AWS.
+Once AWS environment values and infrastructure are in place, the app is ready for an end-to-end AWS deployment and demo.
