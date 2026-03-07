@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { generateShareToken } from '@/lib/share-token'
 import {
   deriveChiefComplaint,
   generateConversationSummary,
@@ -12,12 +13,6 @@ import {
 interface SaveTranscribePayload {
   patientName?: string
   transcript?: TranscriptSegment[]
-}
-
-function generateShareToken() {
-  return (
-    Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-  )
 }
 
 function validateTranscript(input: unknown): TranscriptSegment[] {

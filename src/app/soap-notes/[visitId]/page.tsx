@@ -13,12 +13,7 @@ import { ConversationSummaryRenderer } from '@/components/soap-notes/Conversatio
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
 import { PatientAgentShareButton } from '@/components/soap-notes/PatientAgentShareButton'
 import { requireClinicianPage } from '@/lib/server/clinician-auth'
-
-function generateShareToken() {
-  return (
-    Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-  )
-}
+import { generateShareToken } from '@/lib/share-token'
 
 function safeParseTranscript(raw: string): TranscriptSegment[] {
   try {

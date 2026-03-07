@@ -1,57 +1,78 @@
-﻿# Amazon Nova Hackathon Submission Notes (Synth Nova)
+# Amazon Nova Hackathon Submission Notes (Synth Nova)
 
-## Project Summary
+Source of truth for the hackathon page:
+- https://amazon-nova.devpost.com/
 
-Synth Nova is an AI clinical visit copilot that transforms visit transcripts into structured clinical outputs (summary + SOAP note) and provides a grounded patient-safe chat assistant over the saved visit record.
+## Submission Snapshot
 
-## Amazon Nova Usage (Required)
+- Project: Synth Nova
+- Recommended category: Agentic AI
+- Public repo: https://github.com/Manoj7ar/Synth-Hackathon
+- Submission deadline: March 16, 2026 at 5:00 PM PDT
+
+## One-Line Pitch
+
+Synth Nova turns clinician-patient visit transcripts into structured clinical outputs and a grounded patient-safe follow-up chat using Amazon Nova through Amazon Bedrock.
+
+## Amazon Nova Usage
 
 Amazon Nova is used via Amazon Bedrock for:
 
-- Conversation summarization (`src/lib/clinical-notes.ts`)
-- SOAP note generation (`src/lib/clinical-notes.ts`)
-- Patient/clinician grounded chat generation (`src/app/api/chat/route.ts`)
-- Assistant/report text generation (`src/app/api/assistant/route.ts`, `src/app/api/soap-actions/[visitId]/report/route.ts`)
+- conversation summarization in `src/lib/clinical-notes.ts`
+- SOAP note generation in `src/lib/clinical-notes.ts`
+- grounded clinician/patient chat in `src/app/api/chat/route.ts`
+- assistant and report generation in `src/app/api/assistant/route.ts` and `src/app/api/soap-actions/[visitId]/report/route.ts`
 
-Core provider implementation:
+Core provider:
 
 - `src/lib/nova.ts`
 
-## AWS Architecture (Production-ish Hackathon Setup)
+## Recommended Demo Flow
 
-- ECS Fargate: Next.js application runtime
-- ALB: traffic routing
-- ECR: container images
-- RDS PostgreSQL: transactional app data
-- Bedrock (Amazon Nova): LLM inference
-- S3: optional uploads / artifacts
-- Secrets Manager: runtime secrets
-- CloudWatch Logs: logs + health visibility
+1. Open the landing page and show transcript preview or browser live transcript.
+2. Sign in as the demo clinician.
+3. Save a visit and open the generated summary plus SOAP notes.
+4. Show the patient share experience and ask grounded questions.
+5. Ask about blood pressure history to show citations and the trend visualization.
+6. End on the technology/AWS architecture page and mention Bedrock + Amazon Nova explicitly.
 
-Terraform scaffold:
+## Demo Credentials
 
-- `infra/terraform/main.tf`
-- `infra/terraform/variables.tf`
-- `infra/terraform/outputs.tf`
+- Email: `admin@synth.health`
+- Password: `synth2025`
 
-## Demo Flow (Recommended)
+## Submission Checklist
 
-1. Login as clinician
-2. Create/save visit from transcript text (or browser live transcript)
-3. Show Nova-generated summary and SOAP notes
-4. Open patient share link
-5. Ask patient-facing questions and show grounded/cited response
-6. Show `/api/health` and briefly mention AWS deployment architecture
+The Devpost submission should include:
 
-## Known Limitations (Hackathon Scope)
+- a concise text description focused on the user problem, Amazon Nova usage, and why this matters
+- a video of 3 minutes or less showing the working product
+- the hashtag `#AmazonNova` in the video
+- the repository URL
+- clear setup or testing steps
+- demo credentials if judges need to sign in
 
-- Server-side audio transcription disabled in current Nova hackathon build
-- Elasticsearch/Kibana analytics intentionally removed to focus on Nova-driven core workflow
-- Not a compliance-certified healthcare deployment (demo/prototype)
+If a private repo is ever used instead of the public repo, share access with:
+
+- `testing@devpost.com`
+- `Amazon-Nova-hackathon@amazon.com`
 
 ## Judging Criteria Mapping
 
-- Technical Implementation (60%): Bedrock/Nova integration + AWS deployment + end-to-end workflow
-- Idea (25%): Clinical workflow compression (transcript -> SOAP -> patient-safe guidance)
-- UX (15%): Simple demoable flow with grounded answers and share-link patient experience
+- Technical Implementation (60%): Bedrock + Amazon Nova integration, grounded chat, visit-to-SOAP workflow, AWS deployment scaffold
+- Enterprise or Community Impact (20%): clinician documentation compression and clearer patient follow-up guidance
+- Creativity and Innovation (20%): visit-linked patient chat, tool trace, and blood-pressure trend visualization over saved clinical context
 
+## Known Scope Limits
+
+- server-side audio transcription is intentionally disabled in this build
+- this is a hackathon prototype, not a compliance-certified healthcare deployment
+- AWS deployment still assumes existing VPC networking and outbound access for ECS tasks
+
+## Final Devpost Framing
+
+Use language that keeps Amazon Nova at the center:
+
+- transcript to summary and SOAP note generation with Amazon Nova
+- grounded patient-safe follow-up chat with source tags
+- AWS-native deployment path using ECS, RDS, Bedrock, Secrets Manager, and CloudWatch

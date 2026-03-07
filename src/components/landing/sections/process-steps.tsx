@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowRight, FileText, MessageSquare, WandSparkles } from "lucide-react";
+import { grainTextureStyle, warmMeshStyle } from "@/lib/decorative-backgrounds";
 
 const ProcessSteps = () => {
   return (
@@ -10,11 +11,7 @@ const ProcessSteps = () => {
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-20"
-        style={{
-          backgroundImage:
-            "url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/noise-3.png')",
-          backgroundRepeat: "repeat",
-        }}
+        style={grainTextureStyle}
       />
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl aspect-square pointer-events-none opacity-20 blur-[120px]"
@@ -29,7 +26,7 @@ const ProcessSteps = () => {
             How does this <span className="text-white">work?</span>
           </h2>
           <p className="text-xl leading-relaxed text-white">
-            Import a transcript, let Synth extract medical entities, generate notes, and power a
+            Import a transcript, let Synth extract clinical signals, generate notes, and power a
             patient chat agent grounded in visit evidence.
           </p>
         </div>
@@ -51,7 +48,7 @@ const ProcessSteps = () => {
               <div className="flex items-center gap-3 rounded-lg bg-white/65 px-3 py-2">
                 <FileText className="w-4 h-4 text-slate-400" />
                 <span className="text-slate-800 text-sm font-medium truncate">
-                  “Patient reports dizziness…”
+                  &quot;Patient reports dizziness...&quot;
                 </span>
                 <div className="ml-auto w-6 h-6 rounded bg-[#0ea5e9] flex items-center justify-center">
                   <ArrowRight className="w-3.5 h-3.5 text-white" />
@@ -68,8 +65,8 @@ const ProcessSteps = () => {
               Extract + summarize
             </h3>
             <p className="mb-8 text-[16px] leading-relaxed text-slate-700">
-              Meds, symptoms and vitals get extracted, then Synth generates summaries and structured
-              documentation like SOAP.
+              Medications, symptoms, and vitals are extracted, then Synth generates summaries and
+              structured documentation like SOAP.
             </p>
 
             <div className="w-full mt-auto space-y-2">
@@ -79,16 +76,16 @@ const ProcessSteps = () => {
                     <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                   </div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Entities
+                    Signals
                   </span>
                 </div>
                 <div className="line-clamp-1 text-[12px] font-medium text-slate-800">
-                  Meds: lisinopril, metformin
+                  Medications, symptoms, and vitals highlighted for review
                 </div>
               </div>
               <div className="rounded-xl border border-white/50 bg-white/45 p-3 backdrop-blur-md">
                 <div className="line-clamp-1 text-[12px] font-medium text-slate-700">
-                  SOAP: Assessment + Plan generated
+                  Summary and SOAP note draft generated with Amazon Nova
                 </div>
               </div>
             </div>
@@ -125,10 +122,10 @@ const ProcessSteps = () => {
         </div>
       </div>
 
-      {/* Subtle original gradient texture overlay */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-[url('https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/4ce66827-b6c7-4a55-bcab-d3da8a13ff63-redcove-pro/assets/images/gradient-bg-5.png')] bg-cover opacity-10 pointer-events-none mix-blend-overlay"
+        className="absolute inset-0 pointer-events-none opacity-10 mix-blend-overlay"
+        style={warmMeshStyle}
       />
     </section>
   );

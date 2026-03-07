@@ -152,8 +152,8 @@ export function TranscribeWorkspace({
                       Turn spoken visits into structured documentation
                     </h2>
                     <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">
-                      Start recording, monitor live transcript quality, stop to run server
-                      transcription, then save the patient record for SOAP notes and follow-up
+                      Start recording, monitor live transcript quality, then stop to process the
+                      transcript and save the patient record for SOAP notes and follow-up
                       workflows.
                     </p>
                   </div>
