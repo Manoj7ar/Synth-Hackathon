@@ -43,12 +43,13 @@ flowchart TB
   end
 
   subgraph APP[Next.js App Router]
-    PREVIEW[/api/landing/soap-preview]
-    SAVE[/api/transcribe/save]
-    CHAT[/api/chat]
-    ASSIST[/api/assistant]
-    FINALIZE[/api/finalize-visit]
-    HEALTH[/api/health]
+    APP_RUNTIME[API Runtime]
+    PREVIEW["/api/landing/soap-preview"]
+    SAVE["/api/transcribe/save"]
+    CHAT["/api/chat"]
+    ASSIST["/api/assistant"]
+    FINALIZE["/api/finalize-visit"]
+    HEALTH["/api/health"]
     AUTH[NextAuth]
   end
 
@@ -69,10 +70,27 @@ flowchart TB
     CW[CloudWatch Logs]
   end
 
-  Browser --> ALB --> ECS --> APP
-  APP --> NOVA
-  APP --> RDS
-  APP --> S3
+  LANDING --> ALB
+  CLINICIAN --> ALB
+  PATIENT --> ALB
+  ALB --> ECS
+  ECS --> APP_RUNTIME
+  APP_RUNTIME --> PREVIEW
+  APP_RUNTIME --> SAVE
+  APP_RUNTIME --> CHAT
+  APP_RUNTIME --> ASSIST
+  APP_RUNTIME --> FINALIZE
+  APP_RUNTIME --> HEALTH
+  APP_RUNTIME --> AUTH
+  PREVIEW --> NOVA
+  SAVE --> NOVA
+  CHAT --> NOVA
+  ASSIST --> NOVA
+  FINALIZE --> RDS
+  CHAT --> RDS
+  SAVE --> RDS
+  AUTH --> RDS
+  APP_RUNTIME --> S3
   ECS --> CW
   ECS --> SECRETS
   ECR --> ECS
