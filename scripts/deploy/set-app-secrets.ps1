@@ -7,7 +7,6 @@ param(
   [string]$DirectUrl,
   [Parameter(Mandatory = $true)]
   [string]$NextAuthSecret,
-  [string]$CognitoClientSecret = "",
   [string]$AwsRegion = ""
 )
 
@@ -17,10 +16,6 @@ $secretPayload = @{
   DATABASE_URL    = $DatabaseUrl
   DIRECT_URL      = $DirectUrl
   NEXTAUTH_SECRET = $NextAuthSecret
-}
-
-if ($CognitoClientSecret) {
-  $secretPayload.COGNITO_CLIENT_SECRET = $CognitoClientSecret
 }
 
 $secretPayload = $secretPayload | ConvertTo-Json -Compress

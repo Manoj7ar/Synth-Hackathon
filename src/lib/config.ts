@@ -3,11 +3,6 @@ function readEnv(name: string) {
   return value ? value : undefined
 }
 
-function readBooleanEnv(name: string) {
-  const value = readEnv(name)?.toLowerCase()
-  return value === '1' || value === 'true' || value === 'yes'
-}
-
 export function getAppName() {
   return readEnv('APP_NAME') ?? 'synth'
 }
@@ -54,34 +49,6 @@ export function getUploadsBucketName() {
 
 export function isUploadsBucketConfigured() {
   return Boolean(getUploadsBucketName())
-}
-
-export function getCognitoIssuer() {
-  return readEnv('COGNITO_ISSUER')
-}
-
-export function getCognitoClientId() {
-  return readEnv('COGNITO_CLIENT_ID')
-}
-
-export function getCognitoClientSecret() {
-  return readEnv('COGNITO_CLIENT_SECRET')
-}
-
-export function getCognitoHostedUiDomain() {
-  return readEnv('COGNITO_HOSTED_UI_DOMAIN')
-}
-
-export function isCognitoConfigured() {
-  return Boolean(getCognitoIssuer() && getCognitoClientId() && getCognitoClientSecret())
-}
-
-export function allowLegacyCredentialsAuth() {
-  if (!isCognitoConfigured()) {
-    return true
-  }
-
-  return readBooleanEnv('ALLOW_LEGACY_CREDENTIALS')
 }
 
 export function getTranscribeLanguageCode() {

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import {
-  allowLegacyCredentialsAuth,
   getAppName,
   getAppVersion,
   getNextAuthUrl,
@@ -8,7 +7,6 @@ import {
   getUploadsBucketName,
   isAuthConfigured,
   isAwsTranscribeConfigured,
-  isCognitoConfigured,
   isNovaConfigured,
   isPublicUrlConfigured,
   isUploadsBucketConfigured,
@@ -32,7 +30,6 @@ export async function GET() {
   const authConfigured = isAuthConfigured()
   const publicUrlConfigured = isPublicUrlConfigured()
   const uploadsBucketConfigured = isUploadsBucketConfigured()
-  const cognitoConfigured = isCognitoConfigured()
   const transcribeConfigured = isAwsTranscribeConfigured()
   const ok = databaseReachable && novaConfigured && authConfigured && publicUrlConfigured
 
@@ -48,9 +45,7 @@ export async function GET() {
         authConfigured,
         publicUrlConfigured,
         uploadsBucketConfigured,
-        cognitoConfigured,
         transcribeConfigured,
-        legacyCredentialsEnabled: allowLegacyCredentialsAuth(),
       },
       config: {
         nextauthUrl: getNextAuthUrl() ?? null,

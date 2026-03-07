@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -121,8 +122,8 @@ function VisualizationCard({
             <XAxis dataKey="label" stroke="#7a6a53" tick={{ fontSize: 11 }} />
             <YAxis domain={['dataMin - 8', 'dataMax + 8']} stroke="#7a6a53" tick={{ fontSize: 11 }} />
             <Tooltip
-              formatter={(value: number | undefined, name: string | undefined) => [
-                `${value ?? '-'} mmHg`,
+              formatter={(value: ValueType | undefined, name: NameType | undefined) => [
+                `${typeof value === 'number' ? value : value ?? '-'} mmHg`,
                 name === 'systolic' ? 'Systolic' : 'Diastolic',
               ]}
               labelFormatter={(label) => `Visit: ${label}`}

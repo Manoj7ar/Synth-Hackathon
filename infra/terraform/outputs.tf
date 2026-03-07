@@ -37,3 +37,18 @@ output "app_env_secret_name" {
   value       = aws_secretsmanager_secret.app_env.name
   description = "Secrets Manager secret name used by the ECS task"
 }
+
+output "vpc_id" {
+  value       = local.vpc_id
+  description = "VPC used by the deployment"
+}
+
+output "public_subnet_ids" {
+  value       = local.public_subnet_ids
+  description = "Public subnet IDs used by the ALB"
+}
+
+output "private_subnet_ids" {
+  value       = local.private_subnet_ids
+  description = "Private subnet IDs used by ECS and RDS"
+}

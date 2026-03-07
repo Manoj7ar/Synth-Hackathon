@@ -10,7 +10,6 @@ datasource db {
 
 model User {
   id           String   @id @default(cuid())
-  cognitoSub   String?  @unique
   email        String   @unique
   passwordHash String?
   authProvider String   @default("credentials")

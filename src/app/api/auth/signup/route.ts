@@ -3,7 +3,6 @@ import bcrypt from 'bcryptjs'
 import { NextResponse } from 'next/server'
 import { createPrismaClient, prisma } from '@/lib/prisma'
 import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
-import { allowLegacyCredentialsAuth, isCognitoConfigured } from '@/lib/config'
 
 function normalizeEmail(value: unknown) {
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -54,13 +53,6 @@ async function createAccountWithClient(
 }
 
 export async function POST(req: Request) {
-  if (isCognitoConfigured() && !allowLegacyCredentialsAuth()) {
-    return NextResponse.json(
-      { error: 'Account creation is managed through Amazon Cognito in this environment.' },
-      { status: 403 }
-    )
-  }
-
   let parsedInput: { name: string; email: string; password: string } | null = null
 
   try {

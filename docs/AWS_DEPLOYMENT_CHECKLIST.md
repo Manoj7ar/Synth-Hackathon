@@ -2,18 +2,12 @@
 
 This checklist is the intended Phase 1 deployment path for Synth on AWS with the current Prisma-backed auth flow.
 
-Phase 2 support is now included for:
-
-- Amazon Cognito clinician authentication
-- AWS Transcribe server-side audio transcription
+This deployment path includes AWS Transcribe server-side audio transcription and the current Prisma-backed clinician auth flow.
 
 ## Inputs You Need
 
 - AWS account with Bedrock model access enabled
 - Target AWS region
-- Existing VPC
-- Public subnets for ALB
-- Private subnets for ECS and RDS
 - Docker available locally or in CI
 - AWS CLI authenticated for ECR, ECS, Secrets Manager, and Terraform usage
 
@@ -22,19 +16,12 @@ Phase 2 support is now included for:
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
-- `NEXT_PUBLIC_APP_URL`
 - `AWS_REGION`
 - `BEDROCK_NOVA_TEXT_MODEL_ID`
 - `BEDROCK_NOVA_FAST_MODEL_ID`
 - `TRANSCRIBE_LANGUAGE_CODE`
 
-Optional for Cognito auth:
-
-- `COGNITO_ISSUER`
-- `COGNITO_CLIENT_ID`
-- `COGNITO_CLIENT_SECRET`
-- `ALLOW_LEGACY_CREDENTIALS`
+Terraform can generate `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and `NEXT_PUBLIC_APP_URL` for the default hackathon deployment path.
 
 ## Deployment Steps
 
@@ -58,10 +45,10 @@ Create:
 
 Set:
 
-- VPC and subnet IDs
 - image URI
-- public app URLs
-- database password
+- optional networking overrides
+- optional public app URLs
+- optional database password
 - optional model overrides
 
 ### 3. Apply infrastructure
@@ -81,10 +68,15 @@ Capture these outputs:
 - `rds_endpoint`
 - `app_env_secret_name`
 - `uploads_bucket`
+- `vpc_id`
+- `public_subnet_ids`
+- `private_subnet_ids`
 
 ### 4. Write runtime secrets
 
-Use the helper script:
+This step is optional for the default hackathon deployment path because Terraform already writes the initial app secret values.
+
+Use the helper script only if you want to override generated values after the first deploy:
 
 ```powershell
 ./scripts/deploy/set-app-secrets.ps1 `
@@ -92,7 +84,6 @@ Use the helper script:
   -DatabaseUrl "postgresql://..." `
   -DirectUrl "postgresql://..." `
   -NextAuthSecret "<secret>" `
-  -CognitoClientSecret "<optional-secret>" `
   -AwsRegion <region>
 ```
 
@@ -108,7 +99,7 @@ Run this from an environment that can reach the deployed RDS instance.
 
 ### 6. Force or verify ECS rollout
 
-Make sure the ECS service is using the intended image and fresh secret values.
+Make sure the ECS service is using the intended image and fresh secret values. If you changed the secret after Terraform apply, force a new deployment.
 
 ### 7. Validate the deployment
 
@@ -120,7 +111,6 @@ Check:
 - SOAP generation
 - patient share link
 - patient chat
-- Cognito login if configured
 - server transcription if configured
 
 ## Expected Health Check State
@@ -135,7 +125,6 @@ Check:
 
 `uploadsBucketConfigured` may be `true` even if audio transcription is still inactive.
 
-If Cognito and Transcribe are configured, `/api/health` will also report:
+If Transcribe is configured, `/api/health` will also report:
 
-- `cognitoConfigured: true`
 - `transcribeConfigured: true`

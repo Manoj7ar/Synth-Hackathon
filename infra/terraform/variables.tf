@@ -21,17 +21,20 @@ variable "tags" {
 
 variable "vpc_id" {
   type        = string
-  description = "Existing VPC ID"
+  description = "Optional existing VPC ID. Leave empty to let Terraform create a VPC."
+  default     = ""
 }
 
 variable "public_subnet_ids" {
   type        = list(string)
-  description = "Public subnets for ALB"
+  description = "Optional existing public subnets for ALB. Leave empty to let Terraform create them."
+  default     = []
 }
 
 variable "private_subnet_ids" {
   type        = list(string)
-  description = "Private subnets for ECS and RDS"
+  description = "Optional existing private subnets for ECS and RDS. Leave empty to let Terraform create them."
+  default     = []
 }
 
 variable "app_image_uri" {
@@ -87,7 +90,8 @@ variable "db_username" {
 variable "db_password" {
   type        = string
   sensitive   = true
-  description = "RDS password for initial DB bootstrap (use Secrets Manager in real deployments)"
+  description = "Optional RDS password override. Leave empty to generate one automatically."
+  default     = ""
 }
 
 variable "s3_bucket_name" {
@@ -106,24 +110,6 @@ variable "bedrock_nova_fast_model_id" {
   default = "amazon.nova-micro-v1:0"
 }
 
-variable "cognito_issuer" {
-  type        = string
-  default     = ""
-  description = "Amazon Cognito issuer URL for NextAuth"
-}
-
-variable "cognito_client_id" {
-  type        = string
-  default     = ""
-  description = "Amazon Cognito app client ID"
-}
-
-variable "allow_legacy_credentials" {
-  type        = bool
-  default     = false
-  description = "Allow local credentials auth alongside Cognito"
-}
-
 variable "transcribe_language_code" {
   type        = string
   default     = "en-US"
@@ -132,11 +118,13 @@ variable "transcribe_language_code" {
 
 variable "nextauth_url" {
   type        = string
-  description = "Public URL used by NextAuth (e.g. https://app.example.com)"
+  description = "Optional public URL used by NextAuth. Leave empty to use the ALB DNS name."
+  default     = ""
 }
 
 variable "next_public_app_url" {
   type        = string
-  description = "Public app URL exposed to the frontend"
+  description = "Optional public app URL exposed to the frontend. Leave empty to use the ALB DNS name."
+  default     = ""
 }
 

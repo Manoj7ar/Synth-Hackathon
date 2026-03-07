@@ -8,7 +8,7 @@
   <strong>Amazon Nova-powered clinical documentation and patient follow-up assistant built for the AWS hackathon.</strong>
 </p>
 
-Synth is a full-stack clinical workflow application for turning visit conversations into structured clinical documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, Amazon Cognito-ready authentication, and AWS Transcribe-backed server audio processing.
+Synth is a full-stack clinical workflow application for turning visit conversations into structured clinical documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, Prisma-backed clinician authentication, and AWS Transcribe-backed server audio processing.
 
 The app is designed around an AWS-native runtime:
 
@@ -26,8 +26,7 @@ The app is designed around an AWS-native runtime:
 - Saves visit documentation for authenticated clinician workflows
 - Creates patient share links for grounded post-visit chat
 - Extracts blood pressure history across visits and visualizes trends in chat
-- Supports Cognito-backed clinician authentication when configured
-- Falls back to local credentials auth when Cognito is not configured or explicitly allowed
+- Supports Prisma-backed clinician authentication with NextAuth credentials sessions
 - Supports AWS Transcribe-backed server audio transcription
 
 ## Product Flow
@@ -77,7 +76,7 @@ flowchart TB
 
   subgraph App[Next.js 16 App Router]
     APP_RUNTIME[API Runtime]
-    AUTH[NextAuth + Cognito]
+    AUTH[NextAuth Credentials]
     PREVIEW["/api/landing/soap-preview"]
     TRANSCRIBE["/api/transcribe"]
     SAVE["/api/transcribe/save"]
@@ -141,7 +140,6 @@ flowchart TB
 
 - Amazon Bedrock
 - Amazon Nova
-- Amazon Cognito
 - AWS Transcribe
 - Amazon ECS Fargate
 - Amazon RDS / Aurora PostgreSQL
@@ -193,11 +191,10 @@ The Prisma schema centers on:
 - `CarePlanItem`
 - `GeneratedReport`
 
-`User` now supports both local credentials and Cognito-linked clinicians through:
+`User` stores the clinician identity and profile fields used by the app, including:
 
 - `passwordHash`
 - `authProvider`
-- `cognitoSub`
 
 ## Environment Variables
 
@@ -219,12 +216,6 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
 
-# Cognito
-COGNITO_ISSUER=
-COGNITO_CLIENT_ID=
-COGNITO_CLIENT_SECRET=
-ALLOW_LEGACY_CREDENTIALS=false
-
 # App URLs
 NEXTAUTH_SECRET=your_random_secret_generate_with_openssl_rand_base64_32
 NEXTAUTH_URL=http://localhost:3000
@@ -235,7 +226,6 @@ Notes:
 
 - Bedrock model access must be enabled in the target AWS account and region.
 - AWS Transcribe requires `AWS_REGION` and `S3_BUCKET_AUDIO_UPLOADS`.
-- Cognito auth is enabled only when issuer, client ID, and client secret are all set.
 - For deployed AWS environments, prefer IAM roles over static keys.
 
 ## Local Development
@@ -308,21 +298,22 @@ Current Terraform scaffolding covers:
 - ECS Fargate
 - ECR
 - ALB
+- VPC, public subnets, private subnets, and NAT
 - RDS PostgreSQL
 - S3
 - CloudWatch Logs
 - Secrets Manager
 - IAM for Bedrock, S3, and Transcribe
+- generated DB password and NextAuth secret for the default deploy path
 
 Typical deploy flow:
 
 1. Build and push the container image.
-2. Fill Terraform variables.
+2. Fill Terraform variables, leaving networking and URLs blank if you want the default AWS-created setup.
 3. Apply infrastructure.
-4. Write runtime secrets.
-5. Run Prisma migrations against the deployed database.
-6. Add Cognito values if using Cognito auth.
-7. Validate `/api/health`, auth, transcription, save flow, and patient chat.
+4. Run Prisma migrations against the deployed database.
+5. Override generated secrets only if needed.
+6. Validate `/api/health`, auth, transcription, save flow, and patient chat.
 
 ## Additional Documentation
 
