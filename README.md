@@ -10,6 +10,14 @@
 
 Synth is a full-stack clinical workflow application for turning visit conversations into structured clinical documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, Prisma-backed clinician authentication, and AWS Transcribe-backed server audio processing.
 
+It is built to show an end-to-end clinical workflow on AWS:
+
+- capture or upload visit audio
+- transcribe the conversation
+- generate a summary and SOAP note with Amazon Nova
+- persist the visit and create a patient share link
+- answer grounded follow-up questions from the saved visit record
+
 The app is designed around an AWS-native runtime:
 
 - Next.js on ECS Fargate
@@ -28,6 +36,14 @@ The app is designed around an AWS-native runtime:
 - Extracts blood pressure history across visits and visualizes trends in chat
 - Supports Prisma-backed clinician authentication with NextAuth credentials sessions
 - Supports AWS Transcribe-backed server audio transcription
+
+## Why It Matters
+
+Clinical documentation and post-visit communication are high-friction workflows. Synth compresses that flow into a single application:
+
+- clinicians move from raw conversation to structured documentation faster
+- patient follow-up stays grounded in the actual visit record
+- the AWS stack is not just hosting, it is part of the product workflow through Nova, Transcribe, S3, ECS, RDS, and Secrets Manager
 
 ## Product Flow
 
@@ -63,6 +79,16 @@ Patients open `/patient/[shareToken]` and chat with a grounded assistant that an
 - appointments
 - care plan items
 - blood pressure history across visits
+
+## Demo Flow
+
+The fastest way to understand the product is:
+
+1. Open `/` and paste a transcript to generate a summary and SOAP preview.
+2. Sign in as the demo clinician and start a visit workflow.
+3. Upload audio or transcript content and let Synth generate structured documentation.
+4. Save the visit and create a patient share link.
+5. Open `/patient/[shareToken]` and ask grounded follow-up questions based on the saved visit.
 
 ## Architecture
 
@@ -282,17 +308,6 @@ npm run build
 
 ## AWS Deployment
 
-Deployment assets include:
-
-- `Dockerfile`
-- `infra/terraform/main.tf`
-- `infra/terraform/variables.tf`
-- `infra/terraform/outputs.tf`
-- `infra/terraform/terraform.tfvars.example`
-- `scripts/deploy/build-and-push.ps1`
-- `scripts/deploy/set-app-secrets.ps1`
-- `docs/AWS_DEPLOYMENT_CHECKLIST.md`
-
 Current Terraform scaffolding covers:
 
 - ECS Fargate
@@ -306,7 +321,7 @@ Current Terraform scaffolding covers:
 - IAM for Bedrock, S3, and Transcribe
 - generated DB password and NextAuth secret for the default deploy path
 
-Typical deploy flow:
+Fast-start deployment flow:
 
 1. Build and push the container image.
 2. Fill Terraform variables, leaving networking and URLs blank if you want the default AWS-created setup.
@@ -315,9 +330,20 @@ Typical deploy flow:
 5. Override generated secrets only if needed.
 6. Validate `/api/health`, auth, transcription, save flow, and patient chat.
 
+Deployment assets:
+
+- `Dockerfile`
+- `infra/terraform/main.tf`
+- `infra/terraform/variables.tf`
+- `infra/terraform/outputs.tf`
+- `infra/terraform/terraform.tfvars.example`
+- `scripts/deploy/build-and-push.ps1`
+- `scripts/deploy/set-app-secrets.ps1`
+- `docs/AWS_DEPLOYMENT_CHECKLIST.md`
+
 ## Additional Documentation
 
-- `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md`
+- `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md` - full technical architecture, runtime flow, AWS service integration, and data-layer details
 - `docs/AWS_DEPLOYMENT_CHECKLIST.md`
 - `docs/HACKATHON_SUBMISSION.md`
 - `infra/terraform/README.md`
