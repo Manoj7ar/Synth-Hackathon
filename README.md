@@ -72,13 +72,14 @@ flowchart TB
   end
 
   subgraph App[Next.js 16 App Router]
+    APP_RUNTIME[API Runtime]
     AUTH[NextAuth Credentials]
-    PREVIEW[/api/landing/soap-preview]
-    SAVE[/api/transcribe/save]
-    FINAL[/api/finalize-visit]
-    CHAT[/api/chat]
-    ASSIST[/api/assistant]
-    HEALTH[/api/health]
+    PREVIEW["/api/landing/soap-preview"]
+    SAVE["/api/transcribe/save"]
+    FINAL["/api/finalize-visit"]
+    CHAT["/api/chat"]
+    ASSIST["/api/assistant"]
+    HEALTH["/api/health"]
   end
 
   subgraph AI[Amazon Bedrock]
@@ -102,13 +103,15 @@ flowchart TB
   CHAT --> NOVA
   ASSIST --> NOVA
 
+  APP_RUNTIME --> AUTH
+  APP_RUNTIME --> HEALTH
   SAVE --> PG
   FINAL --> PG
   CHAT --> PG
   AUTH --> PG
 
-  App --> SECRETS
-  App --> S3
+  APP_RUNTIME --> SECRETS
+  APP_RUNTIME --> S3
 ```
 
 ## Stack
