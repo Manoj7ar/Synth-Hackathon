@@ -29,7 +29,7 @@ const stackItems = [
   },
   {
     title: "AWS Runtime",
-    body: "AWS-hosted deployment plan uses ECS Fargate, RDS PostgreSQL, Bedrock, S3, and CloudWatch for a production-ish hackathon setup.",
+    body: "AWS-hosted deployment uses ECS Fargate, RDS PostgreSQL, Bedrock, S3, and CloudWatch for a clean full-stack runtime.",
     icon: FileStack,
   },
 ];

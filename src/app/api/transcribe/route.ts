@@ -23,7 +23,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          'Server audio transcription is disabled in this Amazon Nova hackathon build. Use the browser live transcript in /transcribe, or paste a transcript into the landing preview flow.',
+          'Server audio transcription is not available in this environment. Use the browser live transcript in /transcribe, or paste a transcript into the landing preview flow.',
       },
       { status: 503 }
     )

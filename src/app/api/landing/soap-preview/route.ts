@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Audio preview transcription is disabled in this Amazon Nova hackathon build. Paste a transcript or upload a transcript text file instead.',
+            'Audio preview transcription is not available in this environment. Paste a transcript or upload a transcript text file instead.',
         },
         { status: 503 }
       )

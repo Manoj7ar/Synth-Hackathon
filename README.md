@@ -1,271 +1,262 @@
-﻿# Synth Nova (Amazon Nova Hackathon Build)
+# Synth
 
 <p align="center">
   <img src="./public/favicon.svg" width="96" alt="Synth logo" />
 </p>
 
-<p align="center"><strong>Amazon Nova-powered clinical visit copilot for transcript summarization, SOAP note generation, and grounded patient-safe chat.</strong></p>
+<p align="center">
+  <strong>Amazon Nova-powered clinical documentation and patient follow-up assistant built for the AWS hackathon.</strong>
+</p>
 
----
+Synth is a full-stack clinical workflow app designed for fast, high-signal visit documentation. Clinicians can capture or paste visit transcripts, generate structured summaries and SOAP notes, save the encounter, and share a grounded patient follow-up experience that answers questions from the actual visit record.
 
-## Overview
+The application is built around Amazon Bedrock and Amazon Nova, with a Next.js frontend, Prisma + PostgreSQL data layer, and AWS deployment scaffolding for a clean hackathon demo path.
 
-Synth Nova is a hackathon-focused pivot of Synth for the Amazon Nova Hackathon.
+## What Synth Does
 
-It turns clinician-patient visit transcripts into structured clinical outputs and a patient-safe follow-up chat experience:
+- Turns visit transcripts into structured clinical summaries and SOAP notes
+- Supports transcript preview directly from the landing page
+- Saves visits for authenticated clinician workflows
+- Creates patient share links for grounded follow-up chat
+- Surfaces care plan items, reports, appointments, and visit context in one app
+- Extracts blood pressure history from visit records and visualizes trends in chat
+- Includes Docker and Terraform scaffolding for AWS deployment
 
-- transcript -> summary + SOAP notes
-- clinician workflow for saved visits
-- patient share link with grounded chat
-- blood pressure trend extraction + visualization in chat
-- AWS-ready deployment path (ECS + RDS + Bedrock)
+## Demo Flow
 
-This build is intentionally simplified for speed and reliability.
+### Public landing experience
 
-## Hackathon Readiness
+At `/`, Synth lets judges or reviewers paste a transcript or upload a transcript file and instantly generate:
 
-- Recommended Devpost category: `Agentic AI`
-- Submission deadline: March 16, 2026 at 5:00 PM PDT
-- Public repo: `https://github.com/Manoj7ar/Synth-Hackathon`
-- Demo credentials: `admin@synth.health` / `synth2025`
+- a parsed transcript view
+- a conversation summary
+- a SOAP note preview
 
-## Hackathon Pivot (What Changed)
+This gives the project a low-friction entry point without requiring sign-in.
 
-This repo was refocused to optimize for a lean, demoable Generative AI submission:
+### Clinician workflow
 
-- Amazon Nova (via Amazon Bedrock) replaces Gemini for text generation
-- Elasticsearch/Kibana runtime integrations were removed
-- Supabase runtime adapter was removed in favor of native Prisma + PostgreSQL
-- Finalization/analytics flows were simplified to database-first behavior
-- AWS deployment scaffolding was added (Docker + Terraform)
+Authenticated clinicians can:
 
-## Current Scope (Hackathon MVP)
+- sign in with credentials auth
+- start a new visit
+- capture or edit transcript content
+- generate and save documentation
+- review visit details and SOAP notes
+- finalize the visit
+- create a patient share link
+- manage follow-up items like appointments, care plan items, and generated reports
 
-### Included
+### Patient follow-up experience
 
-- Clinician login (NextAuth credentials)
-- Transcript save workflow
-- Amazon Nova summary generation
-- Amazon Nova SOAP note generation
-- Patient share link flow
-- Grounded patient-safe chat over visit context
-- AWS deployment scaffold
+Patients open a share link at `/patient/[shareToken]` and chat with a grounded assistant that answers from:
 
-### Intentionally De-scoped (for hackathon)
+- transcript content
+- visit summary
+- SOAP notes
+- additional notes
+- appointments
+- care plan items
+- blood pressure history across visits
 
-- Elasticsearch search/indexing/analytics
-- Kibana Agent Builder tools/agents
-- Server-side audio transcription (disabled in this build)
-- Compliance-grade production hardening
+When the question asks for blood pressure comparisons or trends, Synth can attach a chart based on extracted readings from the visit record.
 
-## Important Demo Limitation
-
-Server-side audio transcription is intentionally disabled in this Amazon Nova hackathon build.
-
-Supported demo paths:
-
-- browser live transcript in `/transcribe` (then save)
-- transcript text / transcript file in landing preview (`/api/landing/soap-preview`)
-
-## Architecture At A Glance
+## Architecture
 
 ```mermaid
 flowchart TB
-  subgraph Browser[Browser / UI]
-    CL[Clinician UI]
+  subgraph Browser[Browser]
     LP[Landing Preview]
+    CL[Clinician Workspace]
     PT[Patient Share Chat]
   end
 
-  subgraph App[Next.js App Router + API Routes]
-    AppCore["API Runtime"]
-    AUTH["NextAuth Credentials"]
-    TSave["/api/transcribe/save"]
-    Chat["/api/chat"]
-    Assist["/api/assistant"]
-    Final["/api/finalize-visit"]
-    Preview["/api/landing/soap-preview"]
-    Health["/api/health"]
+  subgraph App[Next.js 16 App Router]
+    AUTH[NextAuth Credentials]
+    PREVIEW[/api/landing/soap-preview]
+    SAVE[/api/transcribe/save]
+    FINAL[/api/finalize-visit]
+    CHAT[/api/chat]
+    ASSIST[/api/assistant]
+    HEALTH[/api/health]
   end
 
   subgraph AI[Amazon Bedrock]
-    Nova[Amazon Nova]
+    NOVA[Amazon Nova]
   end
 
-  subgraph Data[AWS Data Layer]
-    PG[(PostgreSQL / RDS)]
+  subgraph DATA[Data Layer]
+    PG[(PostgreSQL)]
     S3[(S3 optional)]
-    Secrets[Secrets Manager]
+    SECRETS[Secrets Manager]
   end
 
-  CL --> TSave
-  CL --> Final
-  CL --> Chat
-  LP --> Preview
-  PT --> Chat
+  LP --> PREVIEW
+  CL --> SAVE
+  CL --> FINAL
+  CL --> CHAT
+  PT --> CHAT
 
-  TSave --> Nova
-  Chat --> Nova
-  Assist --> Nova
-  Preview --> Nova
+  PREVIEW --> NOVA
+  SAVE --> NOVA
+  CHAT --> NOVA
+  ASSIST --> NOVA
 
-  TSave --> PG
-  Chat --> PG
-  Final --> PG
-  AppCore --> Secrets
-  AppCore --> S3
+  SAVE --> PG
+  FINAL --> PG
+  CHAT --> PG
+  AUTH --> PG
+
+  App --> SECRETS
+  App --> S3
 ```
 
-## Core User Flows
+## Stack
 
-### 1) Transcript -> Save -> SOAP
+### Application
 
-1. Clinician records or pastes transcript text
-2. `POST /api/transcribe/save` persists visit + documentation
-3. Summary + SOAP notes are generated via Amazon Nova
-4. User is routed to saved visit / SOAP note views
-
-### 2) Patient Share Chat
-
-1. Clinician finalizes visit and gets/creates share link
-2. Patient opens `/patient/[shareToken]`
-3. `POST /api/chat` loads visit context from DB
-4. Amazon Nova generates grounded response
-5. UI streams response with citations and optional BP trend visualization
-
-## Tech Stack (Current)
-
-### App
-
-- Next.js 16 (App Router)
+- Next.js 16
 - React 19
 - TypeScript
 - Tailwind CSS v4
-- Radix UI primitives
-- NextAuth (credentials)
+- Radix UI
+- NextAuth
 
 ### AI
 
-- Amazon Bedrock Runtime SDK (`@aws-sdk/client-bedrock-runtime`)
-- Amazon Nova text models (configurable via env)
+- Amazon Bedrock Runtime SDK
+- Amazon Nova text models
 
 ### Data
 
 - Prisma ORM
-- PostgreSQL (intended target: AWS RDS/Aurora PostgreSQL)
+- PostgreSQL
 
-### Infra / Deployment
+### Deployment
 
-- Docker (Next.js standalone build)
-- Terraform scaffold for AWS
-- ECS Fargate + ALB + ECR + RDS + S3 + CloudWatch + Secrets Manager (scaffolded)
+- Docker
+- Terraform
+- AWS ECS Fargate
+- Amazon RDS / Aurora PostgreSQL
+- ECR
+- ALB
+- CloudWatch
+- Secrets Manager
 
-## Code Integration Map (Nova / AWS)
+## Core Routes
 
-### Amazon Nova provider
+### Pages
 
-- `src/lib/nova.ts`
-  - Bedrock client initialization
-  - Nova text generation helpers
-  - model/env resolution integration
+- `/` - landing page with transcript-to-SOAP preview
+- `/login` - clinician sign-in
+- `/clinician` - clinician workspace
+- `/clinician/new-visit` - new visit flow
+- `/transcribe` - transcript workflow
+- `/visit/[visitId]` - visit detail view
+- `/soap-notes/[visitId]` - generated SOAP note view
+- `/patient/[shareToken]` - patient-facing grounded chat
 
-### Config / env helpers
+### APIs
 
-- `src/lib/config.ts`
-  - AWS region/model IDs
-  - app version and readiness checks
+- `POST /api/landing/soap-preview` - generate preview summary and SOAP notes from transcript input
+- `POST /api/transcribe/save` - persist visit and generated documentation
+- `POST /api/finalize-visit` - finalize visit and create patient share flow
+- `POST /api/chat` - grounded clinician/patient chat with streaming output
+- `POST /api/assistant` - in-app AI assistant
+- `GET /api/analytics` - analytics payload from database records
+- `GET /api/health` - readiness and configuration check
+- `POST /api/transcribe` - authenticated endpoint reserved for server transcription flow
 
-### Clinical generation
+## Data Model
 
-- `src/lib/clinical-notes.ts`
-  - conversation summary generation
-  - SOAP note generation
-  - deterministic fallbacks if Nova fails
+The Prisma schema centers on these entities:
 
-### Chat runtime
+- `User`
+- `Patient`
+- `Visit`
+- `VisitDocumentation`
+- `ShareLink`
+- `Appointment`
+- `CarePlanItem`
+- `GeneratedReport`
 
-- `src/app/api/chat/route.ts`
-  - grounded clinician/patient responses
-  - SSE streaming
-  - citations + source details
-  - BP trend visualization payload support
+This keeps the hackathon story straightforward: one system to capture a visit, structure it, store it, and extend it into patient follow-up.
 
-### DB runtime
-
-- `src/lib/prisma.ts`
-  - native Prisma client singleton (no Supabase runtime adapter)
-
-### Local entity extraction (replaces Elastic ML dependency)
-
-- `src/lib/clinical-entities.ts`
-  - medication/symptom/procedure/vital extraction heuristics
-
-### Health endpoint
-
-- `src/app/api/health/route.ts`
-  - readiness check for DB connectivity + Nova config presence
-
-## Project Structure (Key Files)
+## Project Structure
 
 ```text
 prisma/
-  schema.prisma                  # PostgreSQL schema
-  seed.ts                        # demo clinician + Sarah demo record seed
+  schema.prisma
+  seed.ts
 
 src/
   app/
     api/
-      assistant/route.ts         # Nova-backed in-app assistant
-      chat/route.ts              # grounded clinician/patient chat (Nova)
-      finalize-visit/route.ts    # DB-only finalization + share link
-      health/route.ts            # health/readiness endpoint
-      landing/soap-preview/route.ts # transcript preview -> summary + SOAP
-      transcribe/route.ts        # server audio transcription disabled (returns 503)
-      transcribe/save/route.ts   # persist visit + docs
-    patient/[shareToken]/page.tsx
-    soap-notes/[visitId]/page.tsx
-    transcribe/page.tsx
-    visit/[visitId]/page.tsx
+      assistant/route.ts
+      chat/route.ts
+      finalize-visit/route.ts
+      health/route.ts
+      landing/soap-preview/route.ts
+      transcribe/route.ts
+      transcribe/save/route.ts
+    clinician/
+    patient/[shareToken]/
+    soap-notes/[visitId]/
+    transcribe/
+    visit/[visitId]/
+
+  components/
+    landing/
+    clinician/
+    patient/
+    soap-notes/
+    transcribe/
+    chat/
 
   lib/
-    nova.ts                      # Amazon Nova / Bedrock provider
-    config.ts                    # AWS/Nova env helpers
-    clinical-notes.ts            # summary + SOAP generation
-    clinical-entities.ts         # local extraction heuristics
-    prisma.ts                    # native Prisma runtime client
+    auth.ts
+    clinical-entities.ts
+    clinical-notes.ts
+    config.ts
+    nova.ts
+    prisma.ts
+
+infra/
+  terraform/
+
+scripts/
+  deploy/
 ```
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill values.
-
-### Required
+Copy `.env.example` to `.env` and fill in the required values.
 
 ```env
+# Database
 DATABASE_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
 DIRECT_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
 
+# AWS / Bedrock
 AWS_REGION=us-east-1
 BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
 BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
 
-NEXTAUTH_SECRET=...
+# Optional for local development
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
+
+# Auth / app URLs
+NEXTAUTH_SECRET=your_random_secret_generate_with_openssl_rand_base64_32
 NEXTAUTH_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Optional / local dev only
-
-```env
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
-```
-
 Notes:
 
-- In AWS, prefer IAM task roles instead of access keys.
-- Bedrock must be enabled in your AWS account/region and model access granted.
+- Bedrock model access must be enabled in the AWS account and region you use.
+- For deployed AWS environments, prefer IAM roles over static access keys.
 
 ## Local Development
 
@@ -273,16 +264,16 @@ Notes:
 
 - Node.js 20+
 - npm
-- PostgreSQL (local or remote)
-- AWS credentials with Bedrock access (for Nova generation)
+- PostgreSQL
+- AWS credentials with Bedrock access
 
-### Install
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-### Database setup
+### Initialize the database
 
 ```bash
 npm run prisma:generate
@@ -290,7 +281,13 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
-### Run app
+Or run the combined setup command:
+
+```bash
+npm run setup
+```
+
+### Start the app
 
 ```bash
 npm run dev
@@ -298,15 +295,14 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Default Seed Credentials
+## Seeded Demo Account
 
-The seed script creates a demo clinician and Sarah walkthrough record.
+The seed script creates a demo clinician account and a walkthrough-ready demo visit.
 
 - Email: `admin@synth.health`
 - Password: `synth2025`
-- Role: `clinician`
 
-## Verification Commands
+## Verification
 
 ```bash
 npm run lint
@@ -314,40 +310,20 @@ npx tsc --noEmit
 npm run build
 ```
 
-## API Surface (Current)
+## AWS Deployment
 
-### Core workflow
+AWS deployment scaffolding lives in `infra/terraform/` and targets a practical hackathon-ready stack:
 
-- `POST /api/transcribe/save` - persist visit + transcript + generated docs
-- `POST /api/finalize-visit` - finalize visit (DB-only path) + create share link
-- `POST /api/landing/soap-preview` - transcript preview -> summary + SOAP (public demo endpoint)
+- ECS Fargate for the Next.js runtime
+- ECR for container images
+- ALB for public traffic
+- PostgreSQL on RDS
+- Amazon Bedrock for Nova inference
+- Secrets Manager for runtime secrets
+- CloudWatch Logs for application logging
+- S3 for optional file storage
 
-### AI / chat
-
-- `POST /api/chat` - grounded chat for clinician/patient-share flows
-- `POST /api/assistant` - in-app navigation/assistant helper
-- `POST /api/soap-actions/[visitId]/report` - Nova-generated visit report
-
-### Utility
-
-- `GET /api/analytics` - simplified DB-backed analytics payload (Elastic removed)
-- `GET /api/health` - health/readiness metadata
-- `POST /api/transcribe` - returns 503 (server audio transcription disabled in hackathon build)
-
-## AWS Deployment (Production-ish Hackathon Target)
-
-Target architecture (scaffolded in `infra/terraform/`):
-
-- ECS Fargate (Next.js runtime)
-- ALB
-- ECR
-- RDS PostgreSQL
-- Amazon Bedrock (Nova)
-- S3 (optional uploads/artifacts)
-- Secrets Manager
-- CloudWatch Logs
-
-### Included deployment artifacts
+Included deployment assets:
 
 - `Dockerfile`
 - `.dockerignore`
@@ -357,69 +333,28 @@ Target architecture (scaffolded in `infra/terraform/`):
 - `infra/terraform/terraform.tfvars.example`
 - `scripts/deploy/build-and-push.ps1`
 
-### Manual steps still required
+Typical deploy flow:
 
-- fill Terraform variables (`vpc_id`, subnets, image URI, URLs, DB password)
-- `terraform apply`
-- write app secrets to Secrets Manager (`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`)
-- run Prisma migrations against deployed DB (`npx prisma migrate deploy` recommended)
-- confirm Bedrock model access and IAM permissions
-- add HTTPS (ACM + ALB 443 listener) for a public demo domain
+1. Build and push the container image.
+2. Fill Terraform variables for VPC, subnets, image URI, database credentials, and public URLs.
+3. Apply Terraform.
+4. Add runtime secrets such as `DATABASE_URL`, `DIRECT_URL`, and `NEXTAUTH_SECRET`.
+5. Run Prisma migrations against the deployed database.
+6. Confirm Bedrock model access and IAM permissions.
 
-## Deployment / Build Notes
+## Notes for Judges and Reviewers
 
-- `next.config.ts` uses `output: 'standalone'` for container deployment.
-- Docker build copies `prisma/` before `npm install` because `postinstall` runs `prisma generate`.
-- On Windows, Next standalone copy may emit a traced-file copy warning involving `:` in filenames even when build completes successfully.
+- The fastest demo path is the landing page transcript preview.
+- The full product story is unlocked after clinician sign-in.
+- Patient chat is grounded in saved visit data, not free-form generic responses.
+- Blood pressure trend visualization is generated from extracted readings across visit history.
 
-## Troubleshooting
-
-### AI generation is failing
-
-Check:
-
-- `AWS_REGION` is set
-- Bedrock model IDs are valid for your region
-- AWS credentials / task role permissions allow Bedrock invoke
-- Bedrock model access is enabled in AWS console
-
-### `/api/health` shows `novaConfigured=false`
-
-- `AWS_REGION` is missing in runtime env
-
-### `/api/health` shows `databaseReachable=false`
-
-- verify `DATABASE_URL` and `DIRECT_URL`
-- confirm Prisma migrations have been applied
-- confirm the app can reach the PostgreSQL instance from the current network
-
-### Database connection errors
-
-Check:
-
-- `DATABASE_URL` / `DIRECT_URL`
-- RDS security groups and subnet routing
-- Prisma migrations applied
-
-### Server transcription returns 503
-
-This is expected in the hackathon build.
-
-Use:
-
-- browser live transcript in `/transcribe`, or
-- transcript text/file preview flow on landing preview
-
-## Documentation
-
-Detailed AWS/Nova integration documentation (replacement for the old Elastic deep dive):
+## Additional Documentation
 
 - `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md`
-
-Hackathon submission helper notes:
-
 - `docs/HACKATHON_SUBMISSION.md`
+- `infra/terraform/README.md`
 
 ## License
 
-MIT (see `LICENSE`)
+MIT. See `LICENSE`.

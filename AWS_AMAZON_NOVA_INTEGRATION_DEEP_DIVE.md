@@ -1,256 +1,250 @@
-# AWS + Amazon Nova Integration Deep Dive (Synth Nova)
+# AWS + Amazon Nova Integration Deep Dive
 
 ## Overview
 
-This document is the AWS/Amazon Nova equivalent of the previous Elasticsearch integration deep dive.
+This document explains how Synth uses AWS and Amazon Nova to power clinical documentation, grounded chat, and deployment infrastructure.
 
-It explains:
+It covers:
 
-- what is already implemented in the codebase
-- what is scaffolded for AWS but still requires deployment/configuration
-- how Amazon Nova (via Bedrock) is integrated
-- how the app should be deployed on AWS (production-ish hackathon setup)
-- operational gaps, risks, and next steps
+- the Nova integration in code
+- the runtime request flow
+- the PostgreSQL + Prisma data layer
+- the AWS infrastructure scaffold
+- environment and deployment requirements
+- current operational boundaries for the demo
 
-This reflects the current hackathon pivot state of the project.
+Synth is designed as an AWS-native application path: Next.js on ECS, Amazon Bedrock for model inference, PostgreSQL on RDS, and Secrets Manager for runtime configuration.
 
-## Executive Summary
+## System Summary
 
-Synth has been refocused into a Nova-first clinical workflow MVP:
+Synth uses Amazon Nova through Amazon Bedrock for its core AI tasks:
 
-- Amazon Nova (via Amazon Bedrock) now powers text generation (summary, SOAP, chat, assistant/report generation).
-- Elasticsearch/Kibana runtime integrations were removed to reduce hackathon complexity.
-- Supabase runtime adapter was replaced with native Prisma + PostgreSQL.
-- AWS deployment scaffolding exists (Terraform + Docker + deployment script skeleton).
-- The app builds successfully after dependency install and is structurally AWS-ready.
+- visit summary generation
+- SOAP note generation
+- grounded clinician and patient chat
+- in-app assistant responses
+- generated visit report content
 
-Important current limitation:
+The integration is intentionally simple:
 
-- Server-side audio transcription is intentionally disabled in this hackathon build. The intended demo path is browser live transcript and transcript-text input.
+- one shared Bedrock client wrapper
+- environment-driven model selection
+- deterministic fallbacks when AI generation fails
+- a standard PostgreSQL application backend without external search infrastructure
 
-## What Is Actually AWS-Ready Right Now
-
-### Implemented in code (ready)
-
-- Amazon Nova provider wrapper via Bedrock Runtime in `src/lib/nova.ts`
-- Shared config helpers for AWS/Nova env handling in `src/lib/config.ts`
-- Core AI generation paths switched to Nova:
-  - `src/lib/clinical-notes.ts`
-  - `src/app/api/chat/route.ts`
-  - `src/app/api/assistant/route.ts`
-  - `src/app/api/soap-actions/[visitId]/report/route.ts`
-- Prisma runtime client in `src/lib/prisma.ts` (native `@prisma/client`)
-- DB-only finalize flow in `src/app/api/finalize-visit/route.ts`
-- DB-only analytics fallback/stub in `src/app/api/analytics/route.ts`
-- Health endpoint in `src/app/api/health/route.ts`
-- Next.js standalone output enabled in `next.config.ts`
-- Dockerfile and `.dockerignore`
-- Terraform AWS deployment scaffold in `infra/terraform/*`
-- Hackathon submission doc starter in `docs/HACKATHON_SUBMISSION.md`
-
-### Scaffolded but not fully configured (manual setup required)
-
-- Terraform infrastructure deployment values (VPC/subnets/image URI/passwords/URLs)
-- Secrets Manager secret contents (`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`)
-- ECS deployment execution
-- RDS connectivity and Prisma migration run in deployed environment
-- Bedrock model access permissions in your AWS account/region
-- HTTPS (ACM + ALB listener 443 + optional Route53)
-- CI/CD pipeline (only script scaffolding exists)
-
-### Intentionally deferred / not implemented in this hackathon pivot
-
-- AWS Transcribe integration (server audio transcription)
-- Cognito migration (NextAuth credentials retained for speed)
-- Full observability/alarms/dashboards (CloudWatch log group exists in Terraform scaffold, but no alarms/metrics pipeline yet)
-- WAF, private ALB, strict IAM least privilege hardening
-- Compliance posture / HIPAA controls
-
-## Architecture (Current Hackathon Target)
-
-### Logical Architecture
+## High-Level Architecture
 
 ```mermaid
 flowchart TB
-  subgraph Browser["Browser / UI"]
-    CL["Clinician UI"]
-    LP["Landing Preview"]
-    PT["Patient Share Chat"]
+  subgraph Browser[Browser]
+    LANDING[Landing Preview]
+    CLINICIAN[Clinician Workspace]
+    PATIENT[Patient Share Chat]
   end
 
-  subgraph App["Next.js App Router (ECS Fargate)"]
-    API_CHAT["/api/chat"]
-    API_ASSIST["/api/assistant"]
-    API_PREVIEW["/api/landing/soap-preview"]
-    API_SAVE["/api/transcribe/save"]
-    API_FINAL["/api/finalize-visit"]
-    API_HEALTH["/api/health"]
-    AUTH["NextAuth Credentials"]
+  subgraph APP[Next.js App Router]
+    PREVIEW[/api/landing/soap-preview]
+    SAVE[/api/transcribe/save]
+    CHAT[/api/chat]
+    ASSIST[/api/assistant]
+    FINALIZE[/api/finalize-visit]
+    HEALTH[/api/health]
+    AUTH[NextAuth]
   end
 
-  subgraph AI["Amazon Bedrock"]
-    NOVA["Amazon Nova (Text Models)"]
+  subgraph AI[Amazon Bedrock]
+    NOVA[Amazon Nova]
   end
 
-  subgraph Data["AWS Data Layer"]
-    RDS["RDS PostgreSQL"]
-    S3["S3 (optional uploads)"]
-    SECRETS["Secrets Manager"]
+  subgraph DATA[Application Data]
+    RDS[(PostgreSQL / RDS)]
+    S3[(S3 optional)]
+    SECRETS[Secrets Manager]
   end
 
-  subgraph Ops["AWS Runtime"]
-    ALB["Application Load Balancer"]
-    ECS["ECS Fargate Service"]
-    ECR["ECR"]
-    CW["CloudWatch Logs"]
+  subgraph RUNTIME[AWS Runtime]
+    ALB[ALB]
+    ECS[ECS Fargate]
+    ECR[ECR]
+    CW[CloudWatch Logs]
   end
 
-  Browser --> ALB --> ECS
-  ECS --> App
-  App --> NOVA
-  App --> RDS
-  App --> S3
+  Browser --> ALB --> ECS --> APP
+  APP --> NOVA
+  APP --> RDS
+  APP --> S3
   ECS --> CW
   ECS --> SECRETS
   ECR --> ECS
 ```
 
-### Core Clinical Flow (Hackathon MVP)
+## Where Amazon Nova Is Used
 
-```mermaid
-sequenceDiagram
-  participant C as Clinician UI
-  participant S as /api/transcribe/save
-  participant N as Amazon Nova (Bedrock)
-  participant DB as PostgreSQL (Prisma)
-  participant P as Patient Share Page
-  participant CHAT as /api/chat
+### 1. Visit summary generation
 
-  C->>S: save transcript segments + patient data
-  par Summary
-    S->>N: summarize transcript
-    N-->>S: summary
-  and SOAP
-    S->>N: generate SOAP note
-    N-->>S: SOAP
-  end
-  S->>DB: create Patient/Visit/VisitDocumentation/ShareLink
-  S-->>C: visitId + shareToken
+File: `src/lib/clinical-notes.ts`
 
-  P->>CHAT: question + visit context ids/shareToken
-  CHAT->>DB: load visit + transcript + summary + SOAP + plan + appts
-  CHAT->>N: grounded prompt
-  N-->>CHAT: answer text
-  CHAT-->>P: streamed response + citations + optional BP visualization
-```
+`generateConversationSummary(...)` formats transcript segments into a timed doctor/patient transcript and sends a concise summarization prompt to Amazon Nova.
 
-## Code Integration Map (AWS / Nova)
+If Nova is unavailable, the app falls back to a deterministic summary built from transcript segments.
 
-### Amazon Nova Provider Layer
+### 2. SOAP note generation
 
-`src/lib/nova.ts`
+File: `src/lib/clinical-notes.ts`
 
-Responsibilities:
+`generateSoapNotesFromTranscript(...)` sends the transcript to Nova with a structured prompt that requests strict SOAP formatting:
 
-- Initializes `BedrockRuntimeClient`
-- Uses `ConverseCommand` for text generation
-- Exposes:
-  - `generateNovaText(...)`
-  - `generateNovaTextFromMessages(...)`
-  - `isNovaConfigured()`
+- Subjective
+- Objective
+- Assessment
+- Plan
 
-Key behavior:
+If Nova fails, the app returns a deterministic SOAP scaffold using extracted transcript content.
 
-- Reads region/model IDs from `src/lib/config.ts`
-- Throws explicit errors if AWS/Nova env config is missing
-- Normalizes Bedrock response payload into plain text
+### 3. Grounded clinician and patient chat
 
-### Shared Config / Env Resolution
+File: `src/app/api/chat/route.ts`
 
-`src/lib/config.ts`
+The chat runtime loads visit context from PostgreSQL, then builds a grounded prompt from:
 
-Responsibilities:
+- summary
+- SOAP notes
+- transcript
+- additional notes
+- appointments
+- care plan items
+- blood pressure history
 
-- reads `AWS_REGION`
-- resolves Nova model IDs:
-  - `BEDROCK_NOVA_TEXT_MODEL_ID`
-  - `BEDROCK_NOVA_FAST_MODEL_ID`
-- exposes app version and Nova configuration checks
+Nova generates the response text. The route then streams the output over SSE and attaches:
 
-### Provider Cleanup
+- tool trace events
+- citations
+- source details
+- blood pressure trend visualization when relevant
 
-Legacy compatibility code has been removed so the Nova integration path is now direct:
+### 4. Landing page transcript preview
 
-- `src/lib/nova.ts` is the only active model provider wrapper
-- audio-style requests remain intentionally unsupported in this hackathon build
+File: `src/app/api/landing/soap-preview/route.ts`
 
-### Clinical Generation
+The landing page accepts transcript text or a transcript file, parses it into transcript segments, and uses Nova to generate:
 
-`src/lib/clinical-notes.ts`
+- summary
+- SOAP note preview
 
-Nova-powered functions:
+This is the fastest public-facing demo path in the app.
 
-- `generateConversationSummary(...)`
-- `generateSoapNotesFromTranscript(...)`
+### 5. Assistant and report generation
 
-Fallbacks preserved:
-
-- deterministic summary and SOAP generators if Nova fails or is unavailable
-
-### Chat Runtime (Patient / Clinician)
-
-`src/app/api/chat/route.ts`
-
-Changes vs old architecture:
-
-- Kibana Agent Builder branch removed
-- Elasticsearch dependency removed
-- Nova is now the primary generation backend
-- Existing streaming SSE behavior preserved
-- Existing citation extraction and BP trend visualization logic preserved
-
-### Assistant / Report Generation
-
-Nova-backed:
+Files:
 
 - `src/app/api/assistant/route.ts`
 - `src/app/api/soap-actions/[visitId]/report/route.ts`
 
-### Finalization / Analytics (No Elastic)
+These routes also rely on the Nova provider layer for response generation.
 
-`src/app/api/finalize-visit/route.ts`
+## Nova Provider Layer
 
-- Generates local entity extraction using `src/lib/clinical-entities.ts`
-- Finalizes visit in DB
-- Creates share link
-- Returns artifacts without indexing to Elasticsearch
+### Core file
 
-`src/app/api/analytics/route.ts`
+File: `src/lib/nova.ts`
 
-- Returns DB-only summary payload (lightweight)
-- Explicitly indicates Elastic analytics are disabled in hackathon build
+This file is the single shared Bedrock integration point.
 
-## Database Layer (AWS Postgres + Prisma)
+Responsibilities:
 
-### Runtime DB Access
+- initialize `BedrockRuntimeClient`
+- create `ConverseCommand` requests
+- normalize the Bedrock response payload into plain text
+- expose high-level helper functions to the rest of the app
 
-`src/lib/prisma.ts`
+### Exported API
 
-Current state:
+- `generateNovaText(...)`
+- `generateNovaTextFromMessages(...)`
+- `isNovaConfigured()`
 
-- Uses native `PrismaClient`
-- Supabase runtime adapter removed
+### Request model behavior
 
-This is the intended AWS deployment runtime path for:
+The integration currently uses:
 
-- RDS PostgreSQL
-- Aurora PostgreSQL (if you swap target)
+- `ConverseCommand` from `@aws-sdk/client-bedrock-runtime`
 
-### Prisma Schema
+That gives the project one clean invocation path for both prompt-based and message-based workflows.
 
-`prisma/schema.prisma`
+### Model selection
 
-Core entities still power the product:
+By default:
+
+- `generateNovaText(...)` uses the fast model path
+- `generateNovaTextFromMessages(...)` uses the main text model path
+
+Model IDs are resolved from environment variables through `src/lib/config.ts`.
+
+## Configuration Layer
+
+File: `src/lib/config.ts`
+
+This module centralizes AWS and model configuration:
+
+- `AWS_REGION`
+- `BEDROCK_NOVA_TEXT_MODEL_ID`
+- `BEDROCK_NOVA_FAST_MODEL_ID`
+
+It also powers readiness checks used by the app and health endpoints.
+
+Expected defaults from `.env.example`:
+
+- `amazon.nova-lite-v1:0`
+- `amazon.nova-micro-v1:0`
+
+## End-to-End Runtime Flows
+
+### Transcript to saved visit
+
+```mermaid
+sequenceDiagram
+  participant C as Clinician
+  participant API as /api/transcribe/save
+  participant N as Amazon Nova
+  participant DB as PostgreSQL
+
+  C->>API: transcript + visit data
+  API->>N: summarize transcript
+  API->>N: generate SOAP note
+  N-->>API: summary + SOAP
+  API->>DB: save patient, visit, documentation
+  API-->>C: visit id + saved workflow state
+```
+
+### Patient share chat
+
+```mermaid
+sequenceDiagram
+  participant P as Patient
+  participant CHAT as /api/chat
+  participant DB as PostgreSQL
+  participant N as Amazon Nova
+
+  P->>CHAT: question + visit ids + share token
+  CHAT->>DB: validate share token and load visit context
+  CHAT->>N: grounded prompt from visit data
+  N-->>CHAT: response text
+  CHAT-->>P: streamed answer + citations + optional BP chart
+```
+
+## Data Layer
+
+### Runtime access
+
+File: `src/lib/prisma.ts`
+
+Synth uses native Prisma for database access. The AWS target is PostgreSQL on RDS or Aurora PostgreSQL.
+
+### Core entities
+
+File: `prisma/schema.prisma`
+
+The main domain model includes:
 
 - `User`
 - `Patient`
@@ -261,11 +255,17 @@ Core entities still power the product:
 - `CarePlanItem`
 - `GeneratedReport`
 
-No schema redesign was required for the AWS pivot.
+This model supports the full demo story:
 
-## AWS Infrastructure Scaffold (Terraform)
+- capture a visit
+- generate documentation
+- finalize it
+- share it with the patient
+- answer follow-up questions from persisted records
 
-### Files
+## AWS Infrastructure Scaffold
+
+Terraform files:
 
 - `infra/terraform/main.tf`
 - `infra/terraform/variables.tf`
@@ -273,315 +273,265 @@ No schema redesign was required for the AWS pivot.
 - `infra/terraform/terraform.tfvars.example`
 - `infra/terraform/README.md`
 
-### Provisioned Resources (Scaffold)
+### Provisioned resource set
 
-`infra/terraform/main.tf` currently defines a production-ish baseline:
+The scaffold defines a practical hackathon deployment baseline:
 
-- `aws_ecr_repository` (container image storage)
-- `aws_s3_bucket` + public access block (optional uploads/artifacts)
-- `aws_cloudwatch_log_group` (app logs)
-- `aws_db_subnet_group`
-- `aws_security_group` (app + db)
-- `aws_db_instance` PostgreSQL (RDS)
-- `aws_secretsmanager_secret` (app environment secret container)
-- `aws_ecs_cluster`
-- ECS task execution role + task role
-- IAM policy for:
-  - Bedrock invoke
-  - Secrets Manager read
-  - S3 access
-- `aws_lb` (ALB)
-- `aws_lb_target_group` (health check: `/api/health`)
-- `aws_lb_listener` (HTTP/80)
-- `aws_ecs_task_definition`
-- `aws_ecs_service` (Fargate)
+- ECR repository
+- ECS cluster
+- ECS task definition and Fargate service
+- ALB, target group, and listener
+- CloudWatch log group
+- RDS PostgreSQL instance
+- DB subnet group
+- security groups
+- Secrets Manager secret
+- optional S3 bucket
+- IAM task execution and runtime access roles
 
-### What Terraform Does NOT Fully Handle Yet (by design)
+### IAM expectations
 
-- Writing secret values into the Secrets Manager secret
-- HTTPS listener / ACM certificate
-- Route53 DNS
-- RDS migration execution (Prisma migrate)
-- Autoscaling policies
-- CloudWatch alarms
-- WAF
-
-## Containerization and Build
-
-### Docker
-
-`Dockerfile`
-
-Key points:
-
-- Multi-stage build
-- `prisma/` copied before `npm install` because `postinstall` runs `prisma generate`
-- Uses Next standalone output
-- Final runtime starts `server.js`
-
-### Standalone Output
-
-`next.config.ts`
-
-- `output: 'standalone'` enabled for container deployment
-
-### Windows Build Note
-
-On Windows, Next standalone copy can emit a traced-file copy warning involving `:` in a filename. Build may still succeed and exit `0`.
-
-This is a platform/path quirk, not an application logic failure.
-
-## Environment Variables (AWS/Nova Build)
-
-### Required (App + AWS/Nova)
-
-Defined in `.env.example`:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `AWS_REGION`
-- `BEDROCK_NOVA_TEXT_MODEL_ID`
-- `BEDROCK_NOVA_FAST_MODEL_ID`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
-- `NEXT_PUBLIC_APP_URL`
-
-### Optional / Future Use
-
-- `AWS_ACCESS_KEY_ID` (local dev only)
-- `AWS_SECRET_ACCESS_KEY` (local dev only)
-- `S3_BUCKET_AUDIO_UPLOADS`
-
-### Runtime Secret Contract for ECS
-
-Terraform task definition expects the Secrets Manager secret to contain:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET`
-
-The ECS task definition reads these via `secrets` entries.
-
-## Amazon Nova (Bedrock) Integration Details
-
-### Invocation Pattern
-
-Current implementation uses Bedrock `ConverseCommand`.
-
-Why this is good for the hackathon:
-
-- Clean chat-style API shape
-- Easy to swap Nova model IDs by env var
-- Good fit for summarization/structured text generation tasks
-
-### Model IDs
-
-Defaults in code (`src/lib/config.ts`):
-
-- text/default: `amazon.nova-lite-v1:0`
-- fast/default: `amazon.nova-micro-v1:0`
-
-You can override by env without code changes.
-
-### IAM Requirements
-
-ECS task role must be allowed to call:
+The application runtime needs AWS permissions for:
 
 - `bedrock:InvokeModel`
 - `bedrock:InvokeModelWithResponseStream`
+- reading from Secrets Manager
+- optional S3 access
 
-Terraform scaffold includes this (`aws_iam_role_policy.bedrock_access`).
+The Terraform scaffold includes these access paths for the ECS task role.
 
-### Account / Region Requirements
+## Containerization
 
-Even if code is correct, Bedrock will fail unless:
+### Docker
 
-- Bedrock is enabled in your AWS account
-- the selected region supports the chosen Nova model IDs
+File: `Dockerfile`
+
+The application is prepared for container deployment with:
+
+- a multi-stage build
+- Prisma generation during install
+- Next.js standalone output
+- a lightweight runtime image
+
+### Next.js output mode
+
+File: `next.config.ts`
+
+The app uses:
+
+- `output: "standalone"`
+
+This is the correct path for ECS container deployment.
+
+## Environment Contract
+
+Defined in `.env.example`:
+
+```env
+DATABASE_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
+DIRECT_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
+
+AWS_REGION=us-east-1
+BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
+BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
+
+NEXTAUTH_SECRET=...
+NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+### Required for local development
+
+- PostgreSQL connection strings
+- AWS region
+- Bedrock model IDs
+- AWS credentials with Bedrock access
+- NextAuth secret
+
+### Required for ECS runtime
+
+At minimum, the deployed app needs:
+
+- `DATABASE_URL`
+- `DIRECT_URL`
+- `NEXTAUTH_SECRET`
+- `AWS_REGION`
+- Nova model IDs
+- public URL values for auth and app routing
+
+For deployed AWS environments, IAM task roles are preferable to static keys.
+
+## Bedrock and Account Requirements
+
+Even with correct code and infrastructure, Amazon Nova calls will fail unless:
+
+- Bedrock is enabled in the target AWS account
+- the selected AWS region supports the chosen Nova models
 - model access is granted in Bedrock model access settings
+- the ECS task role can invoke Bedrock
 
-## Security Model (Current Hackathon Build)
+## Health and Readiness
 
-### App-level security (implemented)
+File: `src/app/api/health/route.ts`
 
-- NextAuth credential auth for clinician routes
-- Share-token validation for patient routes
-- Ownership checks in chat and visit APIs
-- Secrets intended to come from AWS Secrets Manager (ECS)
+The health endpoint is intended to quickly verify:
 
-### Infra-level security (scaffolded)
+- database reachability
+- Nova configuration presence
+- general application readiness
 
-- App and DB security groups
-- Private subnets for ECS/RDS (expected input)
-- Private RDS (`publicly_accessible = false`)
-- S3 public access blocked
+It is also used as the ALB health check target in the Terraform scaffold.
 
-### Not yet hardened (post-hackathon)
+## Demo Scope Boundaries
 
-- HTTPS/ACM listener on ALB
-- WAF
-- KMS CMKs for explicit encryption control
-- Secrets rotation
-- least-privilege Bedrock resource ARNs
-- audit/event trail for regulated environments
+The current application is optimized for documentation and grounded follow-up workflows.
 
-## Operational Runbook (Deployment)
+Important boundary:
 
-### 1) Build and push image
+- server-side audio transcription is not active in this build
+
+What the product does support today:
+
+- transcript text input
+- transcript file input
+- browser-assisted transcript workflow
+- Nova-based summary generation
+- Nova-based SOAP generation
+- grounded saved-visit chat
+
+This keeps the demo stable and focused on the core Bedrock + Nova story.
+
+## Deployment Runbook
+
+### 1. Install dependencies and verify locally
+
+```bash
+npm install
+npm run setup
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+### 2. Build and push the container image
 
 Use:
 
 - `scripts/deploy/build-and-push.ps1`
 
-Inputs required:
+### 3. Configure Terraform variables
 
-- image tag
-- AWS region
-- ECR repository URI
+Populate:
 
-### 2) Configure Terraform
+- VPC ID
+- public and private subnet IDs
+- app image URI
+- database password
+- public application URLs
 
-Copy:
-
-- `infra/terraform/terraform.tfvars.example` -> `infra/terraform/terraform.tfvars`
-
-Fill:
-
-- `vpc_id`
-- `public_subnet_ids`
-- `private_subnet_ids`
-- `app_image_uri`
-- `db_password`
-- `nextauth_url`
-- `next_public_app_url`
-
-### 3) Apply Terraform
+### 4. Apply Terraform
 
 From `infra/terraform/`:
 
-- `terraform init`
-- `terraform plan`
-- `terraform apply`
+```bash
+terraform init
+terraform plan
+terraform apply
+```
 
-### 4) Populate Secrets Manager secret
+### 5. Add secret values
 
-After apply, write values to the secret output by Terraform:
+Write runtime secrets into the Secrets Manager secret used by the ECS task.
 
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET`
+### 6. Run Prisma migrations
 
-### 5) Run Prisma migrations
+Recommended:
 
-Recommended approaches:
+- `npx prisma migrate deploy`
 
-- one-off ECS task using the same image (`npx prisma migrate deploy`)
-- CI/CD job with network access to RDS
+This can run from a one-off ECS task or CI/CD environment with database access.
 
-### 6) Force ECS service deployment
+### 7. Validate the deployed app
 
-After secrets/migrations are ready:
+Check:
 
-- update service / force new deployment
-
-### 7) Validate
-
-- `GET /api/health`
+- `/api/health`
 - login flow
-- transcript save -> SOAP generation
+- landing transcript preview
+- clinician save flow
 - patient share chat
 
-## Troubleshooting (AWS / Nova)
+## Troubleshooting
 
-### Bedrock module import/build failure
-
-Symptoms:
-
-- `Can't resolve '@aws-sdk/client-bedrock-runtime'`
-
-Fix:
-
-- run `npm install` (updates `node_modules` and `package-lock.json`)
-
-### Nova not configured at runtime
-
-Symptoms:
-
-- AI routes return configuration error
+### Nova configuration errors
 
 Check:
 
 - `AWS_REGION`
-- model ID env vars
-- ECS task role permissions
-- Bedrock model access enabled in AWS account
+- Bedrock model IDs
+- IAM permissions
+- Bedrock model access in the AWS account
 
-### Chat/summary/report fallbacks triggered
+### Empty or fallback AI responses
 
-Symptoms:
+Likely causes:
 
-- deterministic fallback text appears
+- Bedrock permissions missing
+- Bedrock access not enabled
+- wrong model or region pairing
+- runtime environment values missing
 
-Causes:
-
-- Bedrock permission failure
-- model access denied
-- region mismatch
-- malformed secret/env config
-
-### RDS connection failure
+### Database connection failures
 
 Check:
 
-- `DATABASE_URL` / `DIRECT_URL`
-- SG rules (app SG -> DB SG on 5432)
-- subnet routing / NAT for ECS (if needed)
+- `DATABASE_URL`
+- `DIRECT_URL`
+- security group rules on port `5432`
+- subnet routing and connectivity
 - RDS instance status
 
-### `/api/health` reports `novaConfigured=false`
+### ECS app starts but AI routes fail
 
-Cause:
+This usually means infrastructure is up but Bedrock access is not fully configured.
 
-- `AWS_REGION` missing in runtime env
+### Health check failures
 
-## Gaps and Recommended Next Steps
+Check:
 
-### High priority (complete before demo)
+- database access
+- env var injection
+- app port and listener configuration
+- ALB target group health path
 
-1. Deploy Terraform scaffold with real VPC/subnets
-2. Populate Secrets Manager secret values
-3. Run Prisma migrations on deployed DB
-4. Confirm Bedrock model access + permissions
-5. Test end-to-end demo on AWS URL
+## Practical Readiness Status
 
-### Medium priority (stronger demo)
+Current status of the codebase:
 
-1. Add HTTPS (ACM + ALB 443 listener + redirect 80->443)
-2. Add CloudWatch alarms (5xx, CPU/memory)
-3. Add GitHub Actions deploy workflow
+- Bedrock integration is implemented
+- Nova-backed generation paths are wired through the app
+- Prisma + PostgreSQL runtime is implemented
+- Docker packaging is in place
+- Terraform deployment scaffold is in place
 
-### Optional (post-hackathon)
+What still depends on environment setup:
 
-1. Integrate AWS Transcribe for server audio transcription
-2. Replace NextAuth credentials with Cognito
-3. Add S3 upload pipeline for audio files
-4. Add richer analytics (Athena/OpenSearch/warehouse path)
+- real AWS networking values
+- Bedrock account access
+- runtime secrets
+- deployed database migrations
+- public deployment configuration
 
-## Verification Status (Current)
+## Bottom Line
 
-Validated after the AWS/Nova pivot:
+Synth already has the application-level AWS and Amazon Nova integration needed for a strong hackathon deployment:
 
-- TypeScript typecheck passes
-- ESLint passes
-- Production build passes (with Windows standalone traced-file warning noted)
+- Nova powers the core documentation and chat workflows
+- AWS infrastructure is scaffolded for ECS + RDS deployment
+- the runtime model is simple enough to deploy quickly
 
-This means the codebase is in a deployable shape once AWS account resources and runtime secrets are configured.
-
-## Quick Readiness Answer (Short Version)
-
-Is everything else AWS-ready?
-
-- Code architecture: mostly yes
-- Infra scaffold: yes
-- Turnkey deployment: no (manual AWS configuration and deployment steps still required)
-- Audio transcription on server: no (intentionally disabled for this hackathon build)
+Once AWS account access, secrets, networking, and migrations are configured, the app is ready for an end-to-end demo on AWS.

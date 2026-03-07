@@ -1,6 +1,6 @@
-﻿# Terraform Scaffold (AWS Production-ish Hackathon Deploy)
+# Terraform Scaffold (AWS Deploy)
 
-This folder provides a starting Terraform configuration for deploying the Synth Nova app to AWS with:
+This folder provides a starting Terraform configuration for deploying the Synth app to AWS with:
 
 - ECS Fargate
 - ALB
@@ -23,7 +23,7 @@ This folder provides a starting Terraform configuration for deploying the Synth 
 
 ## Important Notes
 
-- This is a hackathon-oriented scaffold, not a hardened production baseline.
+- This scaffold is designed to get Synth deployed quickly on AWS with the core services the app expects.
 - You still need to write the secret JSON values to the created Secrets Manager secret (DATABASE_URL, DIRECT_URL, NEXTAUTH_SECRET).
 - Add HTTPS (`aws_lb_listener` with ACM cert on 443) before a public demo domain.
 - If you want a fully private RDS bootstrap, run Prisma migrations from CI or a one-off ECS task.
@@ -37,4 +37,3 @@ This folder provides a starting Terraform configuration for deploying the Synth 
 4. `terraform apply`
 5. Populate the Secrets Manager secret values
 6. Force new ECS deployment
-

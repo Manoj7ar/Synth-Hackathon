@@ -434,7 +434,7 @@ const HeroSection: React.FC = () => {
 
         <div className="relative z-10 mt-1 flex items-center gap-2 text-xs font-medium text-white/80">
           <span className="rounded-full bg-white/15 px-3 py-1">
-            Amazon Nova hackathon build
+            Amazon Nova on AWS
           </span>
           <span>Transcript preview, SOAP notes, and grounded patient chat.</span>
         </div>

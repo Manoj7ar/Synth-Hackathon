@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       visitsOverTime: Array.from(buckets.entries()).map(([date, count]) => ({ date, count })),
       topMedications: [],
       topSymptoms: [],
-      note: 'Elastic analytics are disabled in the Amazon Nova hackathon build.',
+      note: 'Analytics are currently served from the core application database.',
     })
   } catch (error) {
     console.error('Analytics error:', error)
