@@ -30,7 +30,7 @@ interface SaveTranscriptionResponse {
 interface LiveEntity {
   kind: 'symptom' | 'medication' | 'vital'
   name: string
-  emoji: string
+  badge: string
 }
 
 interface SpeechRecognitionAlternativeLike {
@@ -157,7 +157,7 @@ function extractLiveEntities(text: string): LiveEntity[] {
       entities.push({
         kind: 'symptom',
         name: symptom.replace(/\b\w/g, (char) => char.toUpperCase()),
-        emoji: '🩹',
+        badge: 'SX',
       })
     }
   })
@@ -169,7 +169,7 @@ function extractLiveEntities(text: string): LiveEntity[] {
     entities.push({
       kind: 'medication',
       name: medication.replace(/\b\w/g, (char) => char.toUpperCase()),
-      emoji: '💊',
+      badge: 'RX',
     })
   })
 
@@ -178,7 +178,7 @@ function extractLiveEntities(text: string): LiveEntity[] {
     entities.push({
       kind: 'vital',
       name: `BP ${bpMatch[1]}/${bpMatch[2]}`,
-      emoji: '🩺',
+      badge: 'VT',
     })
   }
 
@@ -600,7 +600,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
                       key={`${entity.kind}-${entity.name}`}
                       className="inline-flex items-center rounded-full bg-[#f1e4cc] px-2.5 py-1 text-xs font-medium text-[#59431f]"
                     >
-                      <span className="mr-1">{entity.emoji}</span>
+                      <span className="mr-1 font-semibold">{entity.badge}</span>
                       {entity.name}
                     </span>
                   ))}
@@ -708,7 +708,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
                     key={`${entity.kind}-${entity.name}`}
                     className="inline-flex items-center rounded-full bg-[#f1e4cc] px-2.5 py-1 text-xs font-medium text-[#59431f]"
                   >
-                    <span className="mr-1">{entity.emoji}</span>
+                    <span className="mr-1 font-semibold">{entity.badge}</span>
                     {entity.name}
                   </span>
                 ))}

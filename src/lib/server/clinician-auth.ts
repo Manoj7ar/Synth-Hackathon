@@ -27,54 +27,18 @@ export async function getClinicianSessionContext(): Promise<ClinicianSessionCont
     return null
   }
 
-  let usedLegacyFallback = false
-  let user:
-    | {
-        id: string
-        email: string
-        role: string
-        name: string | null
-        practiceName: string | null
-        specialty: string | null
-        onboardingCompletedAt: Date | null
-      }
-    | null = null
-
-  try {
-    user = (await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        name: true,
-        practiceName: true,
-        specialty: true,
-        onboardingCompletedAt: true,
-      },
-    })) as typeof user
-  } catch (error) {
-    usedLegacyFallback = true
-    console.warn('Clinician profile query fallback:', error)
-    const legacyUser = (await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        name: true,
-      },
-    })) as { id: string; email: string; role: string; name: string | null } | null
-
-    user = legacyUser
-      ? {
-          ...legacyUser,
-          practiceName: null,
-          specialty: null,
-          onboardingCompletedAt: null,
-        }
-      : null
-  }
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      name: true,
+      practiceName: true,
+      specialty: true,
+      onboardingCompletedAt: true,
+    },
+  })
 
   if (!user || user.role !== 'clinician') {
     return null
@@ -84,7 +48,7 @@ export async function getClinicianSessionContext(): Promise<ClinicianSessionCont
     session,
     user: {
       ...user,
-      onboardingComplete: usedLegacyFallback ? true : Boolean(user.onboardingCompletedAt),
+      onboardingComplete: Boolean(user.onboardingCompletedAt),
     },
   }
 }
