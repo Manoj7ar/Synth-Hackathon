@@ -49,6 +49,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setSignInError('')
+    setSignUpError('')
 
     const result = await signIn('credentials', {
       email,
@@ -127,6 +128,7 @@ export default function LoginPage() {
   }
 
   const quickLogin = async (loginEmail: string, loginPassword: string) => {
+    setSignUpError('')
     setLoading(true)
     setSignInError('')
 

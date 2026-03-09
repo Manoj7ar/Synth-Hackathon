@@ -83,7 +83,6 @@ export const authOptions: NextAuthOptions = {
               passwordHash,
               role: 'clinician',
               name: providedName || null,
-              authProvider: 'credentials',
             },
           })
 

@@ -17,7 +17,15 @@ declare module 'next-auth' {
   }
 
   interface User {
+    id: string
+    email: string
+    name?: string | null
     role: string
+    practiceName?: string | null
+    specialty?: string | null
+    onboardingCompletedAt?: string | null
+    onboardingComplete?: boolean
+    authProvider?: string
   }
 }
 
@@ -26,5 +34,9 @@ declare module 'next-auth/jwt' {
     userId?: string
     role?: string
     authProvider?: string
+    practiceName?: string | null
+    specialty?: string | null
+    onboardingCompletedAt?: string | null
+    onboardingComplete?: boolean
   }
 }

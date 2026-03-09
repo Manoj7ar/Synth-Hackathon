@@ -35,7 +35,6 @@ async function createAccountWithClient(
       passwordHash,
       role: 'clinician',
       name: input.name,
-      authProvider: 'credentials',
     },
     select: {
       id: true,
