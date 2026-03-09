@@ -115,67 +115,47 @@ The fastest way to understand the project is:
 
 ## Architecture
 
+This uses a vertical layout so the diagram stays readable in standard Markdown previews.
+
+### Stack View
+
 ```mermaid
 flowchart TB
-  subgraph Browser[Browser]
-    LANDING[Landing Preview]
-    CLINICIAN[Clinician Workspace]
-    TWIN[Patient Twin]
-    LAB[Evidence Lab]
-    PATIENT[Patient Share Chat]
-  end
+  CLIENTS["Browser Surfaces<br/>Landing Preview<br/>Clinician Workspace<br/>Patient Twin<br/>Evidence Lab<br/>Patient Share Chat"]
+  APP["Next.js 16 App Router<br/>Server Components<br/>NextAuth Credentials<br/>Route Handlers and API Runtime"]
+  ROUTES["Primary Runtime Paths<br/>/api/landing/soap-preview<br/>/api/transcribe<br/>/api/transcribe/save<br/>/api/finalize-visit<br/>/api/chat<br/>/api/reconciliation/*<br/>/api/assistant<br/>/api/health"]
+  AI["AWS Inference and Speech<br/>Amazon Nova 2 on Bedrock<br/>AWS Transcribe"]
+  DATA["Data and File Plane<br/>RDS PostgreSQL<br/>S3"]
+  OPS["Runtime and Operations<br/>ECS Fargate<br/>Application Load Balancer<br/>Secrets Manager<br/>CloudWatch"]
 
-  subgraph App[Next.js 16 App Router]
-    AUTH[NextAuth Credentials]
-    PREVIEW["POST /api/landing/soap-preview"]
-    TRANSCRIBE["POST /api/transcribe"]
-    SAVE["POST /api/transcribe/save"]
-    FINALIZE["POST /api/finalize-visit"]
-    CHAT["POST /api/chat"]
-    RECON["/api/reconciliation/*"]
-    ASSIST["POST /api/assistant"]
-    HEALTH["GET /api/health"]
-  end
+  CLIENTS --> APP
+  APP --> ROUTES
+  ROUTES --> AI
+  ROUTES --> DATA
+  APP --> OPS
+```
 
-  subgraph AI[Amazon Bedrock]
-    NOVA[Amazon Nova 2]
-  end
+### Request Path View
 
-  subgraph Speech[AWS Speech]
-    TRANSCRIBE_SVC[AWS Transcribe]
-  end
+```mermaid
+flowchart TB
+  LANDING["Landing Preview"] --> PREVIEW["/api/landing/soap-preview"]
+  PREVIEW --> PREVIEW_WORK["Transcript normalization<br/>Optional image extraction<br/>SOAP and summary generation"]
+  PREVIEW_WORK --> PREVIEW_OUT["Preview response<br/>No database write"]
 
-  subgraph Data[AWS Data Layer]
-    PG[(PostgreSQL / RDS)]
-    S3[(S3)]
-    SECRETS[Secrets Manager]
-  end
+  CLINICIAN["Clinician Workspace"] --> TRANSCRIBE["/api/transcribe"]
+  TRANSCRIBE --> TRANSCRIBE_WORK["S3 upload<br/>AWS Transcribe job<br/>Transcript return"]
+  CLINICIAN --> SAVE["/api/transcribe/save and /api/finalize-visit"]
+  SAVE --> SAVE_WORK["Artifact extraction<br/>Nova note generation<br/>Visit persistence in RDS"]
 
-  LANDING --> PREVIEW
-  CLINICIAN --> TRANSCRIBE
-  CLINICIAN --> SAVE
-  CLINICIAN --> FINALIZE
-  CLINICIAN --> CHAT
-  CLINICIAN --> RECON
-  TWIN --> CHAT
-  LAB --> RECON
-  PATIENT --> CHAT
+  TWIN["Patient Twin"] --> TWIN_WORK["Cross-visit synthesis<br/>Timeline and trend assembly<br/>RDS-backed longitudinal view"]
 
-  AUTH --> PG
-  PREVIEW --> NOVA
-  SAVE --> NOVA
-  CHAT --> NOVA
-  ASSIST --> NOVA
-  RECON --> NOVA
-  TRANSCRIBE --> TRANSCRIBE_SVC
-  TRANSCRIBE --> S3
+  LAB["Evidence Lab"] --> RECON["/api/reconciliation/runs"]
+  RECON --> RECON_WORK["Transcript lane<br/>Artifact lane<br/>Timeline lane<br/>Reconciler lane"]
+  RECON_WORK --> RECON_OUT["Run persistence<br/>Conflict ledger<br/>Suggested actions"]
 
-  SAVE --> PG
-  FINALIZE --> PG
-  CHAT --> PG
-  RECON --> PG
-  HEALTH --> PG
-  HEALTH --> SECRETS
+  PATIENT["Patient Share Chat"] --> CHAT["/api/chat"]
+  CHAT --> CHAT_WORK["Grounded retrieval from notes<br/>Artifacts and Twin context<br/>Nova answer with citations"]
 ```
 
 ## Stack
