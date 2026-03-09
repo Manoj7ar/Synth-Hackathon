@@ -16,6 +16,10 @@ interface ChatInterfaceProps {
   mode?: 'clinician' | 'patient'
   showToolTrace?: boolean
   onConversationStart?: () => void
+  starterPrompts?: string[]
+  title?: string
+  description?: string
+  placeholder?: string
 }
 
 export function ChatInterface({
@@ -26,6 +30,10 @@ export function ChatInterface({
   mode = 'clinician',
   showToolTrace = mode === 'clinician',
   onConversationStart,
+  starterPrompts: starterPromptsOverride,
+  title,
+  description,
+  placeholder,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
@@ -36,6 +44,10 @@ export function ChatInterface({
   const theme = mode === 'patient' ? 'patient' : 'default'
 
   const starterPrompts = useMemo(() => {
+    if (starterPromptsOverride && starterPromptsOverride.length > 0) {
+      return starterPromptsOverride
+    }
+
     if (mode === 'patient') {
       return [
         'When is my next appointment?',
@@ -49,7 +61,20 @@ export function ChatInterface({
       'What follow-up do I need?',
       'What did the doctor say about blood pressure?',
     ]
-  }, [mode])
+  }, [mode, starterPromptsOverride])
+
+  const emptyStateTitle =
+    title ?? (mode === 'patient' ? 'Ask Synth AI About Your Care' : 'Ask About Your Visit')
+  const emptyStateDescription =
+    description ??
+    (mode === 'patient'
+      ? 'Ask about your next appointment, care tasks, food guidance, and visit instructions.'
+      : 'I can answer questions about your visit, medications, symptoms, and follow-up instructions.')
+  const inputPlaceholder =
+    placeholder ??
+    (mode === 'patient'
+      ? 'Ask about appointments, care tasks, food guidance, or your visit...'
+      : 'Ask about your visit...')
 
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) {
@@ -192,13 +217,9 @@ export function ChatInterface({
                 )}
               </div>
               <h3 className="mb-2 text-xl font-semibold text-slate-900">
-                {mode === 'patient' ? 'Ask Synth AI About Your Care' : 'Ask About Your Visit'}
+                {emptyStateTitle}
               </h3>
-              <p className="max-w-md text-slate-600">
-                {mode === 'patient'
-                  ? 'Ask about your next appointment, care tasks, food guidance, and visit instructions.'
-                  : 'I can answer questions about your visit, medications, symptoms, and follow-up instructions.'}
-              </p>
+              <p className="max-w-md text-slate-600">{emptyStateDescription}</p>
               <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2">
                 {starterPrompts.map((prompt) => (
                   <button
@@ -223,11 +244,7 @@ export function ChatInterface({
           <MessageInput
             onSend={handleSendMessage}
             disabled={isLoading}
-            placeholder={
-              mode === 'patient'
-                ? 'Ask about appointments, care tasks, food guidance, or your visit...'
-                : 'Ask about your visit...'
-            }
+            placeholder={inputPlaceholder}
             theme={theme}
           />
         </div>

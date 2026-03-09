@@ -1,993 +1,580 @@
 # AWS Amazon Nova Integration Deep Dive
 
-This document is the technical architecture note for Synth as currently implemented in this repository. It is intentionally detailed. The goal is to explain the actual runtime model, control flow, data model, AWS boundary, failure behavior, and deployment contract behind the application.
+This document describes the current technical architecture of Synth as implemented in this repository. The goal is accuracy, not marketing. It explains where Amazon Nova is on the critical path, where the system uses deterministic fallbacks, how multimodal evidence is handled, how longitudinal memory is built, and how the new Evidence Lab reconciliation workspace actually works.
 
-Synth is a clinical workflow application built around four core capabilities:
+## Current System Shape
 
-- transcript-to-summary generation
-- transcript-to-SOAP note generation
-- grounded clinician and patient chat
-- audio transcription with AWS Transcribe feeding the Nova-powered documentation pipeline
+Synth is a clinical workflow application built around five connected capabilities:
 
-The implementation is AWS-native at the inference, storage, deployment, and operations layers:
+- transcript or audio to summary and SOAP generation
+- multimodal artifact extraction from clinical images
+- longitudinal Patient Twin synthesis across visits
+- Evidence Lab reconciliation with persisted agent outputs and approvals
+- grounded clinician and patient chat from saved visit records
+
+The implementation is AWS-native at the inference, speech, storage, and deployment layers:
 
 - Amazon Bedrock hosts the Amazon Nova models
 - AWS Transcribe handles server-side audio transcription
-- Amazon S3 stores uploaded transcription media
+- Amazon S3 stores uploaded audio for transcription jobs
 - Amazon ECS Fargate runs the Next.js application container
-- Amazon RDS PostgreSQL stores application and visit data
+- Amazon RDS PostgreSQL stores application state
 - AWS Secrets Manager provides runtime secret material
 - Amazon CloudWatch stores application logs
-- Amazon ECR stores the application container image
+- Amazon ECR stores the application image
 - Application Load Balancer exposes the public HTTP entry point
-
-The current authentication model is intentionally simple and reliable for the hackathon path:
-
-- NextAuth credentials provider
-- Prisma-backed clinician user records
-- bcrypt password hashes stored in PostgreSQL
-- JWT session strategy
 
 ## System Goals
 
-The system is designed to optimize for:
+The current system is designed to optimize for:
 
-- low-friction clinical demo flows
-- strong Bedrock and Nova usage as the central AI layer
-- deterministic data persistence around generated clinical artifacts
-- grounded patient follow-up instead of generic chatbot behavior
-- deployability on AWS without needing pre-existing networking
+- low-friction hackathon and judge flows
+- strong Amazon Nova usage on the documentation and chat paths
+- visible multimodal evidence handling
+- persistent, reviewable clinician workflows
+- longitudinal patient memory instead of single-visit isolation
+- deployment on AWS without requiring a pre-existing platform footprint
 
 It is not currently optimized for:
 
-- full EHR interoperability
-- multi-tenant production hardening
-- HIPAA certification posture
-- long-running asynchronous orchestration services
-- event-driven transcript job processing with queue workers
+- EHR interoperability
+- HIPAA or regulated production posture
+- event-driven queue workers
+- multi-tenant isolation
+- fully model-driven agent orchestration for every internal lane
 
-This distinction matters because several parts of the system intentionally favor directness over distributed complexity. That is a reasonable tradeoff for a hackathon-grade system that still needs a coherent production-path architecture.
+That distinction matters. The project now has richer surfaces than a pure demo, but it still intentionally favors a coherent, deployable hackathon system over distributed enterprise complexity.
 
 ## Repository Map
 
-The most relevant implementation files for this document are:
+The files most relevant to this architecture are:
 
 - [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts)
+- [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts)
 - [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
 - [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts)
+- [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts)
+- [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/patient-twin.ts)
+- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/reconciliation.ts)
 - [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth.ts)
-- [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts)
 - [`src/app/api/landing/soap-preview/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/landing/soap-preview/route.ts)
 - [`src/app/api/transcribe/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/route.ts)
 - [`src/app/api/transcribe/save/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/save/route.ts)
 - [`src/app/api/finalize-visit/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/finalize-visit/route.ts)
 - [`src/app/api/chat/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/chat/route.ts)
-- [`src/app/api/health/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/health/route.ts)
+- [`src/app/api/reconciliation/runs/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/route.ts)
+- [`src/app/api/reconciliation/runs/[runId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/route.ts)
+- [`src/app/api/reconciliation/runs/[runId]/actions/[actionId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/actions/%5BactionId%5D/route.ts)
+- [`src/app/patient-twin/[patientId]/page.tsx`](C:/Users/manoj/CascadeProjects/Synth/src/app/patient-twin/%5BpatientId%5D/page.tsx)
+- [`src/app/reconciliation/[patientId]/page.tsx`](C:/Users/manoj/CascadeProjects/Synth/src/app/reconciliation/%5BpatientId%5D/page.tsx)
 - [`prisma/schema.prisma`](C:/Users/manoj/CascadeProjects/Synth/prisma/schema.prisma)
 - [`infra/terraform/main.tf`](C:/Users/manoj/CascadeProjects/Synth/infra/terraform/main.tf)
-- [`infra/terraform/variables.tf`](C:/Users/manoj/CascadeProjects/Synth/infra/terraform/variables.tf)
-- [`infra/terraform/outputs.tf`](C:/Users/manoj/CascadeProjects/Synth/infra/terraform/outputs.tf)
 
 ## High-Level Architecture
 
 ```mermaid
 flowchart TB
   subgraph Browser[Browser Clients]
-    LANDING[Landing Transcript Preview]
+    LANDING[Landing Preview]
     CLINICIAN[Clinician Workspace]
+    TWIN[Patient Twin]
+    LAB[Evidence Lab]
     PATIENT[Patient Share Chat]
   end
 
-  subgraph App[Next.js 16 App Router on ECS Fargate]
-    APP_RUNTIME[API and SSR Runtime]
-    LOGIN["/login"]
+  subgraph App[Next.js 16 App Router]
+    APP_RUNTIME[API Runtime]
+    AUTH[NextAuth Credentials]
     PREVIEW["POST /api/landing/soap-preview"]
     TRANSCRIBE["POST /api/transcribe"]
     SAVE["POST /api/transcribe/save"]
     FINALIZE["POST /api/finalize-visit"]
     CHAT["POST /api/chat"]
+    RECON["/api/reconciliation/*"]
+    ASSIST["POST /api/assistant"]
     HEALTH["GET /api/health"]
   end
 
-  subgraph Auth[Auth Layer]
-    NEXTAUTH[NextAuth Credentials]
-    BCRYPT[bcrypt Password Validation]
-  end
-
   subgraph AI[Amazon Bedrock]
-    NOVA_LITE[amazon.nova-lite-v1:0]
-    NOVA_MICRO[amazon.nova-micro-v1:0]
+    NOVA[Amazon Nova 2]
   end
 
-  subgraph Speech[AWS Speech Services]
-    TRANSCRIBE_SVC[AWS Transcribe]
+  subgraph Speech[AWS Speech]
+    TR[AWS Transcribe]
   end
 
-  subgraph Storage[AWS Data Plane]
+  subgraph Data[AWS Data Plane]
     RDS[(RDS PostgreSQL)]
-    S3[(S3 Audio Uploads)]
+    S3[(S3)]
     SECRETS[Secrets Manager]
-    CW[CloudWatch Logs]
+    CW[CloudWatch]
   end
 
   LANDING --> PREVIEW
-  CLINICIAN --> LOGIN
   CLINICIAN --> TRANSCRIBE
   CLINICIAN --> SAVE
   CLINICIAN --> FINALIZE
   CLINICIAN --> CHAT
+  CLINICIAN --> RECON
+  TWIN --> CHAT
+  LAB --> RECON
   PATIENT --> CHAT
 
-  APP_RUNTIME --> NEXTAUTH
-  NEXTAUTH --> BCRYPT
-  NEXTAUTH --> RDS
-
-  PREVIEW --> NOVA_LITE
-  SAVE --> NOVA_LITE
-  CHAT --> NOVA_LITE
-  CHAT --> NOVA_MICRO
-  TRANSCRIBE --> TRANSCRIBE_SVC
+  AUTH --> RDS
+  PREVIEW --> NOVA
+  SAVE --> NOVA
+  CHAT --> NOVA
+  ASSIST --> NOVA
+  RECON --> NOVA
+  TRANSCRIBE --> TR
   TRANSCRIBE --> S3
 
   SAVE --> RDS
   FINALIZE --> RDS
   CHAT --> RDS
+  RECON --> RDS
   HEALTH --> RDS
-
-  APP_RUNTIME --> SECRETS
+  HEALTH --> SECRETS
   APP_RUNTIME --> CW
 ```
 
-## Request and Data Flow Overview
+The important architectural point is that Nova is central, but not universal. Some paths are Nova-first. Others are intentionally deterministic because the product needs to stay inspectable and resilient.
 
-At a high level, the system has three distinct operational modes:
+## Operational Modes
 
-1. public preview mode
-2. authenticated clinician mode
-3. patient share-link mode
+At a high level, the application has five runtime modes:
 
-These modes share the same Bedrock/Nova infrastructure, but they differ materially in:
+1. public preview
+2. authenticated clinician documentation
+3. Patient Twin longitudinal review
+4. Evidence Lab reconciliation
+5. patient share-link chat
 
-- input source
-- authorization model
+These modes share the same database, auth, and AWS infrastructure, but they differ in:
+
+- authorization boundaries
 - persistence behavior
-- retrieval grounding strategy
+- Bedrock dependence
+- use of multimodal inputs
+- use of longitudinal history
 
-### Public preview mode
+## Public Preview Pipeline
 
-The public landing page is a non-authenticated demonstration path. It accepts transcript text or transcript text files, parses them into normalized transcript segments, and then runs two Bedrock calls:
+The landing page is the non-authenticated demo path.
 
-- summary generation
-- SOAP note generation
+Route:
 
-This route does not persist data to PostgreSQL.
+- [`POST /api/landing/soap-preview`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/landing/soap-preview/route.ts)
 
-### Clinician mode
+Inputs:
 
-The clinician mode is authenticated, persists data, and supports both transcript text workflows and server-side audio transcription workflows.
+- transcript text
+- transcript text file
+- audio file
+- optional evidence image
 
-The core lifecycle is:
+Behavior:
 
-1. clinician signs in
-2. clinician records or uploads audio, or works from transcript content
-3. server optionally transcribes audio via AWS Transcribe
-4. transcript segments are normalized
-5. summary and SOAP are generated via Amazon Nova
-6. patient, visit, documentation, and share-link artifacts are stored in PostgreSQL
-7. clinician can finalize the visit and use grounded follow-up chat
+1. If the request is transcript mode, the route parses either structured transcript JSON or plain text into normalized segments.
+2. If the request is audio mode, the route requires AWS Transcribe configuration and delegates audio processing to [`transcribeAudioFile()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts).
+3. If an image is attached, the route calls [`extractClinicalImageArtifact()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts) to normalize the evidence into summary text, findings, vitals, medications, and extracted text.
+4. The route sends the transcript plus any artifact evidence context into:
+   - [`generateConversationSummary()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+   - [`generateSoapNotesFromTranscript()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+5. The response returns transcript segments, summary, SOAP note, and any extracted artifact payload.
 
-### Patient share-link mode
+Persistence behavior:
 
-The patient mode is not authenticated with an account. Instead, access is granted through a share token tied to a persisted visit and patient combination.
+- no database write
 
-The patient cannot see arbitrary app data. The patient chat route validates:
+Failure behavior:
 
-- token validity
-- token revocation state
-- token expiration
-- token-to-patient match
-- token-to-visit match
+- transcript mode can operate without Transcribe
+- audio mode returns `503` if Transcribe is not configured
+- Nova failures in summary or SOAP generation fall back to deterministic text assembly in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+- image extraction falls back to conservative artifact placeholders if Nova multimodal analysis is unavailable
 
-Only after those checks does the route construct grounded context and call Nova.
+## Clinician Documentation Pipeline
 
-## End-to-End Runtime Sequence
+The authenticated clinician flow has two main API paths:
 
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant B as Browser
-  participant N as Next.js App
-  participant A as NextAuth
-  participant T as AWS Transcribe
-  participant S as S3
-  participant R as RDS
-  participant X as Amazon Nova via Bedrock
+- [`POST /api/transcribe`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/route.ts)
+- [`POST /api/transcribe/save`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/save/route.ts)
 
-  U->>B: Sign in as clinician
-  B->>N: POST auth request
-  N->>A: Validate credentials
-  A->>R: Load clinician user
-  A-->>N: Session JWT
-  N-->>B: Authenticated session
+### Server transcription
 
-  U->>B: Upload audio for transcription
-  B->>N: POST /api/transcribe
-  N->>S: PutObject(audio)
-  N->>T: StartTranscriptionJob
-  loop Poll for completion
-    N->>T: GetTranscriptionJob
-    T-->>N: IN_PROGRESS or COMPLETED
-  end
-  N-->>B: Transcript segments
-
-  U->>B: Save visit
-  B->>N: POST /api/transcribe/save
-  N->>X: Generate summary
-  N->>X: Generate SOAP note
-  N->>R: Create patient, visit, documentation, share link
-  N-->>B: visitId, patientId, shareToken
-
-  U->>B: Ask grounded question
-  B->>N: POST /api/chat
-  N->>R: Load visit, docs, appointments, plans, BP history
-  N->>X: Generate grounded response
-  N-->>B: SSE stream with chunks, citations, metadata
-```
-
-## Authentication and Session Model
-
-The current auth stack is intentionally conservative.
-
-There is exactly one active provider:
-
-- NextAuth credentials provider
-
-The implementation lives in [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth.ts).
-
-### Why credentials-only
-
-The project previously explored external identity-provider integration, but the current runtime path deliberately keeps auth inside the application boundary. This simplifies:
-
-- demo account creation
-- clinician onboarding
-- AWS deployment configuration
-- local development parity
-- hackathon review flows
-
-This also means the full identity path is application-owned:
-
-- user lookup via Prisma
-- password comparison via bcrypt
-- session token issuance via NextAuth JWT strategy
-
-### Credentials authorize flow
-
-The provider accepts:
-
-- `email`
-- `password`
-- `name`
-- `intent`
-
-`intent` is used to support both:
-
-- sign-in
-- sign-up
-
-If `intent === "signup"`:
-
-- the code checks whether the email already exists
-- hashes the password with bcrypt cost `10`
-- creates a clinician user row
-- attempts to create a demo SOAP note fixture for the new clinician
-
-If `intent !== "signup"`:
-
-- the code looks up the existing user by normalized email
-- verifies `passwordHash`
-- compares the submitted password against the bcrypt hash
-
-### JWT session strategy
-
-The NextAuth session model uses JWT rather than database-backed sessions. The important implications are:
-
-- low operational overhead
-- no session-table dependency
-- session payload enriched from Prisma during callbacks
-
-The `jwt` callback:
-
-- stores `userId`
-- stores `role`
-- stores `authProvider`
-- rehydrates missing identity metadata from Prisma if needed
-
-The `session` callback:
-
-- loads the current clinician profile from Prisma
-- attaches application-level profile fields to `session.user`
-- exposes `practiceName`, `specialty`, and onboarding state
-
-### Auth authorization boundaries
-
-Clinician-only routes depend on one of two server checks:
-
-- direct session validation in the route handler
-- `requireClinicianPage()` from the server auth helper path
-
-The clinician guard conceptually requires:
-
-- valid session
-- `role === "clinician"`
-- valid user row in PostgreSQL
-
-Patient access is not user-account auth. It is token-gated resource access.
-
-## Bedrock and Amazon Nova Integration
-
-The Nova integration is centralized in [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts).
-
-This file is intentionally small. That is a good design choice. It keeps all Bedrock invocation logic in one place and lets the application routes think in terms of `generateNovaText()` instead of SDK primitives.
-
-### Bedrock client lifecycle
-
-The module memoizes a `BedrockRuntimeClient` instance:
-
-- first call creates the client
-- subsequent calls reuse the same client object
-
-This is useful in the server runtime because it avoids repeatedly constructing SDK clients on each request.
-
-### API surface
-
-The module exposes two public generation functions:
-
-- `generateNovaText()`
-- `generateNovaTextFromMessages()`
-
-`generateNovaText()` is the simpler one-shot prompt interface.
-
-`generateNovaTextFromMessages()` supports structured multi-message invocation and defaults to the larger text model path.
-
-### Underlying Bedrock operation
-
-The implementation uses the Bedrock `ConverseCommand`.
-
-That is important because the app is not using raw provider-native JSON request bodies. It is using the Bedrock unified converse abstraction. This has several advantages:
-
-- simpler model switching
-- cleaner message-role handling
-- less provider-specific request shaping code
-
-### Model selection strategy
-
-Environment variables:
-
-```env
-AWS_REGION=us-east-1
-BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
-BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
-```
-
-The current code path defaults to:
-
-- `amazon.nova-micro-v1:0` for `generateNovaText()`
-- `amazon.nova-lite-v1:0` for the more structured messages API
-
-In practice this means the app biases toward:
-
-- lower latency for straightforward generation tasks
-- a stronger text model when a richer structured conversation entry point is used
-
-That balance is reasonable because the app makes many direct text-generation calls and benefits from predictable response latency.
-
-### Response normalization
-
-The Nova wrapper extracts text from:
-
-- `response.output.message.content[]`
-
-It concatenates all text fragments, trims whitespace, and throws if the model returns no text. This is a good defensive behavior because it forces callers into explicit error handling rather than silently propagating empty AI output.
-
-## Clinical Prompting Layer
-
-The application-specific prompt engineering lives mainly in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts).
-
-This module does three important things:
-
-- defines the normalized transcript shape
-- formats transcripts for Nova prompts
-- exposes domain-specific generation helpers
-
-### Transcript segment model
-
-The transcript abstraction is:
-
-```ts
-type TranscriptSegment = {
-  speaker: 'clinician' | 'patient'
-  start_ms: number
-  end_ms: number
-  text: string
-}
-```
-
-This shape is small but strong. It preserves:
-
-- role separation
-- sequence
-- approximate timing
-- compatibility with both manual and machine transcription inputs
-
-That same structure is reused across:
-
-- landing-page preview parsing
-- AWS Transcribe outputs
-- persisted visit transcript JSON
-- chat transcript reconstruction
-
-### Transcript formatting strategy
-
-Before sending a transcript to Nova, the app converts each segment into:
-
-```text
-[mm:ss] Doctor: ...
-[mm:ss] Patient: ...
-```
-
-This formatting is important for three reasons:
-
-1. it gives Nova clear speaker identity
-2. it provides chronology
-3. it creates a citation-like structure that can later be echoed back in grounded responses
-
-### Summary generation prompt
-
-`generateConversationSummary()` sends a focused summarization instruction:
-
-- 3 to 5 concise bullet points
-- focus on chief complaint
-- focus on key findings
-- focus on decisions
-- focus on next steps
-
-The generation parameters are tuned for consistency:
-
-- `maxTokens: 600`
-- `temperature: 0.2`
-
-This is appropriate for documentation generation because low-temperature output reduces stylistic drift.
-
-### SOAP note generation prompt
-
-`generateSoapNotesFromTranscript()` uses a stricter structured prompt with explicit required headings:
-
-- `# SOAP Note`
-- `## S (Subjective)`
-- `## O (Objective)`
-- `## A (Assessment)`
-- `## P (Plan)`
-
-The prompt also instructs Nova to:
-
-- extract real information from transcript content
-- stay concise
-- mark uncertain items as `[to be confirmed]`
-
-This matters because clinical documentation quality depends heavily on structural consistency.
-
-### Deterministic fallback behavior
-
-This module does not fully fail closed when Nova is unavailable.
-
-If a Nova request throws:
-
-- summary generation falls back to a handcrafted conversation summary
-- SOAP generation falls back to a templated SOAP draft
-
-That is a strong product decision for a demo system because it prevents the app from becoming unusable when the model is unavailable.
-
-## Landing Preview Pipeline
-
-The landing-page preview flow is implemented in [`src/app/api/landing/soap-preview/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/landing/soap-preview/route.ts).
-
-This route is interesting because it is effectively a public mini-ingestion pipeline with its own parsing and normalization layer.
-
-### Inputs
-
-The route accepts `multipart/form-data` with:
-
-- `mode`
-- `transcriptText`
-- `transcriptFile`
-
-Audio mode is intentionally disabled for the public landing preview. That is a deliberate scope boundary.
-
-### Parsing strategy
-
-The route tries transcript parsing in several passes:
-
-1. parse structured transcript arrays if JSON-like content is embedded
-2. split by lines if multiple transcript lines are present
-3. split by sentence boundaries if the input is a single large blob
-4. infer speaker from explicit prefixes like `Doctor:` or `Patient:`
-5. infer speaker heuristically from content if no explicit prefix exists
-
-### Speaker inference heuristics
-
-The route contains a clinician-hints vs patient-hints scoring system.
-
-Examples of clinician hints:
-
-- `i recommend`
-- `we should`
-- `follow up`
-- `prescribe`
-
-Examples of patient hints:
-
-- `i feel`
-- `my pain`
-- `my symptoms`
-- `i noticed`
-
-If hints tie, the parser alternates relative to the previous speaker. This is imperfect, but it is pragmatic and keeps the public preview useful even for poorly formatted transcripts.
-
-### Sanitization
-
-The route also corrects:
-
-- empty text segments
-- invalid timestamps
-- missing duration ranges
-- inconsistent speaker labels
-
-The sanitized result is a proper `TranscriptSegment[]`, which is then passed to the summary and SOAP generators in parallel.
-
-### Landing preview flowchart
-
-```mermaid
-flowchart TD
-  A[Landing FormData] --> B{Transcript text present?}
-  B -->|Yes| C[Read transcriptText]
-  B -->|No| D{Transcript file present?}
-  D -->|Yes| E[Read transcriptFile text]
-  D -->|No| F[Return 400]
-
-  C --> G[Parse structured array if possible]
-  E --> G
-  G --> H{Structured transcript parsed?}
-  H -->|Yes| I[Sanitize transcript segments]
-  H -->|No| J[Split text into lines or sentences]
-  J --> K[Infer speakers and timing]
-  K --> I
-
-  I --> L{Segments usable?}
-  L -->|No| M[Return 400]
-  L -->|Yes| N[generateConversationSummary]
-  L -->|Yes| O[generateSoapNotesFromTranscript]
-  N --> P[Return transcript + summary + SOAP]
-  O --> P
-```
-
-## AWS Transcribe Pipeline
-
-The server-side audio transcription system is implemented in [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts) and exposed through [`src/app/api/transcribe/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/route.ts).
-
-### Route contract
-
-`POST /api/transcribe` requires:
+`/api/transcribe` requires:
 
 - authenticated session
-- Nova configured
-- Transcribe configured
-- `audio` file in `multipart/form-data`
+- Nova configuration
+- Transcribe configuration
 
-The route explicitly refuses to proceed if:
+That Nova dependency is a current product choice, not a speech-system requirement. The route treats transcription as part of the end-to-end AI documentation workflow and returns a clear `503` if the environment is not fully configured for that path.
 
-- there is no authenticated session
-- `AWS_REGION` is missing
-- Bedrock model env vars are missing
-- `S3_BUCKET_AUDIO_UPLOADS` is missing
-- the audio file was not provided
+The actual transcription implementation in [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts):
 
-This route is a good example of explicit runtime validation before expensive downstream calls.
+1. validates the file type
+2. uploads the audio to S3
+3. starts an AWS Transcribe job
+4. polls until completion
+5. downloads the transcript JSON from the returned URI
+6. reconstructs diarized transcript segments
+7. falls back to sentence-based segmentation if speaker structure is weak
 
-### Audio upload strategy
+Current speech assumptions:
 
-The transcribe helper:
+- up to 2 speakers
+- alternating speaker-label to role mapping
+- audio formats such as `mp3`, `mp4`, `wav`, `flac`, `ogg`, `amr`, `webm`, and `m4a`
 
-1. detects file extension from filename or MIME type
-2. normalizes to one of the supported formats
-3. uploads the raw audio bytes to S3
-4. starts an AWS Transcribe job pointing at the S3 URI
-5. polls the job status
-6. fetches the output transcript JSON from the URI returned by Transcribe
-7. converts that payload into the app’s internal `TranscriptSegment[]`
+### Save flow
 
-### Supported audio formats
+`/api/transcribe/save` is the main persistence route.
 
-The code currently recognizes:
+Inputs:
 
-- `mp3`
-- `mp4`
-- `wav`
-- `flac`
-- `ogg`
-- `amr`
-- `webm`
-- `m4a`
+- patient name
+- normalized transcript segments
+- optional evidence image
 
-### Speaker diarization strategy
+Behavior:
 
-The Transcribe job requests:
+1. validates the request payload
+2. extracts artifact evidence if an image is attached
+3. calls Nova-backed summary and SOAP generation with the artifact context included
+4. derives the chief complaint from the earliest patient segment
+5. writes patient, visit, documentation, artifacts, and share link inside a Prisma transaction
 
-- `ShowSpeakerLabels: true`
-- `MaxSpeakerLabels: 2`
+Persistence order:
 
-That is a key product assumption:
+- `Patient`
+- `Visit`
+- `VisitDocumentation`
+- optional `VisitArtifact`
+- `ShareLink`
 
-- one clinician
-- one patient
+Important design property:
 
-The parser then maps speaker labels into application roles:
+- Nova generation happens before the database transaction
 
-- first label encountered -> `patient`
-- second label encountered -> `clinician`
-- any additional labels alternate by position parity
+That keeps the write path short and avoids holding an open transaction across model latency.
 
-This is a heuristic, not a semantically guaranteed role mapping. It works acceptably for two-speaker office-visit audio, but it is not a general diarization truth engine.
+## Multimodal Artifact Pipeline
 
-### Transcript normalization behavior
+Synth currently supports image evidence artifacts through [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts).
 
-The parser reconstructs segments from:
+The normalized artifact shape includes:
 
-- pronunciation items
-- punctuation items
-- speaker label ranges
+- `summary`
+- `extractedText`
+- `findings`
+- `evidenceSnippets`
+- `medications`
+- `vitals`
+- `instructions`
 
-It merges adjacent tokens into segments when:
+Supported image MIME types:
 
-- speaker is unchanged
-- there is no major timing gap
+- `image/jpeg`
+- `image/jpg`
+- `image/png`
+- `image/webp`
+- `image/gif`
 
-If AWS Transcribe returns insufficient structure, the code falls back to sentence-based reconstruction from the raw transcript text.
+The artifact extraction path uses [`generateNovaMultimodalText()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts) when Nova is configured. It requests strict JSON output and then normalizes that response into a stable internal shape.
 
-### Polling behavior
+If multimodal Nova is unavailable or fails:
 
-The current implementation uses in-request polling:
+- the file is still accepted
+- the artifact becomes a conservative placeholder
+- the system records that the evidence was attached
+- the product does not overclaim extracted facts
 
-- up to 40 attempts
-- 3 seconds between attempts
-
-This means the maximum wait is roughly two minutes.
-
-That is acceptable for a hackathon implementation, but it has clear production implications:
-
-- long-running request occupancy
-- client waiting on a single HTTP response
-- no asynchronous job callback model
-
-A future production evolution would likely move this to:
-
-- upload request
-- async job start
-- persisted job record
-- background completion handler
-- client polling a status endpoint
-
-### Transcribe sequence
-
-```mermaid
-sequenceDiagram
-  participant C as Clinician Browser
-  participant A as /api/transcribe
-  participant S as S3
-  participant T as AWS Transcribe
-  participant O as Transcript JSON Output
-
-  C->>A: multipart/form-data audio file
-  A->>A: Validate session and config
-  A->>S: PutObject(audio bytes)
-  A->>T: StartTranscriptionJob(s3://bucket/key)
-  loop up to 40 attempts
-    A->>T: GetTranscriptionJob(jobName)
-    T-->>A: IN_PROGRESS or COMPLETED
-  end
-  A->>O: fetch TranscriptFileUri
-  O-->>A: Transcribe JSON payload
-  A->>A: Normalize into TranscriptSegment[]
-  A-->>C: success + transcript + duration_ms
-```
-
-## Save Pipeline
-
-The visit save pipeline is implemented in [`src/app/api/transcribe/save/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/save/route.ts).
-
-This route is the main persistence boundary between transient transcript work and permanent visit records.
-
-### Inputs
-
-The route expects JSON containing:
-
-- `patientName`
-- `transcript`
-
-The transcript must already be in normalized internal segment shape.
-
-### Validation
-
-The route validates:
-
-- clinician session
-- non-empty patient name
-- transcript array presence
-- transcript element structure and types
-
-This route does not trust the incoming transcript blindly. It revalidates every segment.
-
-### Generation and persistence order
-
-The route does the following:
-
-1. validates transcript
-2. generates summary
-3. generates SOAP
-4. derives chief complaint
-5. opens a Prisma transaction
-6. creates patient row
-7. creates visit row
-8. creates visit documentation row
-9. creates share-link row
-10. returns identifiers and share token
-
-### Important design property
-
-The data write is transactional after AI generation.
-
-That means:
-
-- Nova calls occur before the database transaction
-- the transaction contains only persistence work
-
-This is the correct shape. It avoids holding a database transaction open while waiting on AI inference latency.
-
-### Save transaction diagram
-
-```mermaid
-flowchart TD
-  A[Validated transcript] --> B[Generate summary with Nova]
-  A --> C[Generate SOAP with Nova]
-  B --> D[Derive chief complaint]
-  C --> D
-  D --> E[Begin Prisma transaction]
-  E --> F[Create Patient]
-  F --> G[Create Visit]
-  G --> H[Create VisitDocumentation]
-  H --> I[Create ShareLink]
-  I --> J[Commit transaction]
-  J --> K[Return visitId, patientId, shareToken]
-```
+That is a good demo-system behavior because it preserves the visible multimodal workflow without pretending the extraction succeeded.
 
 ## Finalize Visit Pipeline
 
-The finalize route lives in [`src/app/api/finalize-visit/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/finalize-visit/route.ts).
+[`POST /api/finalize-visit`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/finalize-visit/route.ts) is a post-processing route that turns a saved visit into additional artifacts such as:
 
-This route is different from the save route.
+- after-visit summary
+- draft SOAP note
+- medication count
+- symptom count
+- extracted follow-up items
 
-It is not primarily a Nova route. It is a post-processing route that:
+Important note:
 
-- loads persisted transcript JSON
-- extracts lightweight medical entities
-- derives after-visit artifacts
-- finalizes visit state
-- ensures a share token exists
+- this route is not primarily Nova-driven
+- it uses [`extractMedicalEntities()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-entities.ts) and deterministic formatting
 
-### Entity extraction
+That is intentional. It gives the app one reliable post-processing surface even when model behavior is unavailable or inconsistent.
 
-Each transcript chunk is passed through `extractMedicalEntities()`.
+## Patient Twin Pipeline
 
-The route then aggregates:
+The Patient Twin implementation lives in [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/patient-twin.ts).
 
-- medications
-- symptoms
-- procedures
-- vitals
+It loads all visits for a patient scoped to one clinician and synthesizes:
 
-It produces:
+- active conditions
+- medication history
+- BP history
+- trend signals
+- evidence insights
+- follow-up risks
+- open questions
+- next appointment
+- open plan items
+- longitudinal timeline events
+- citations
 
-- a generated after-visit summary
-- a draft SOAP note
-- follow-up task extraction
+The Twin is built server-side from persisted data:
 
-### Why this route exists
+- visit documentation
+- visit artifacts
+- appointments
+- care-plan items
 
-The save route is optimized for immediate documentation generation.
+Important accuracy note:
 
-The finalize route is optimized for:
+- Patient Twin synthesis is deterministic
+- it does not make a dedicated Bedrock call to create the Twin object
 
-- artifact refinement
-- chunk-wise entity extraction
-- post-visit structured outputs
-- patient share-link readiness
+That is a good design choice for the current product. The longitudinal view stays inspectable, reproducible, and fast.
 
-### Current artifact quality note
+### Twin-grounded chat
 
-This route’s generated outputs are more deterministic and rule-based than the Nova-generated clinical summary/SOAP pipeline. That is an intentional implementation distinction:
+The Twin uses the shared chat route:
 
-- save route: AI-first clinical generation
-- finalize route: extraction-first post-processing
+- [`POST /api/chat`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/chat/route.ts)
 
-That layering is useful because it separates core doc generation from additional artifact shaping.
+When the clinician UI sets `agentId = synth_patient_twin`, the chat route:
+
+1. loads the normal visit context
+2. loads Twin context for the visit
+3. builds a Twin-specific prompt
+4. selects Twin-aware citations
+5. falls back to deterministic Twin answers if Nova is unavailable
+
+This is not a separate chat service. It is a specialization of the existing grounded chat path.
+
+## Evidence Lab Pipeline
+
+Evidence Lab is the most important new technical surface in the codebase.
+
+Relevant implementation files:
+
+- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/reconciliation.ts)
+- [`src/app/api/reconciliation/runs/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/route.ts)
+- [`src/app/api/reconciliation/runs/[runId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/route.ts)
+- [`src/app/api/reconciliation/runs/[runId]/actions/[actionId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/actions/%5BactionId%5D/route.ts)
+
+### What a run is
+
+A reconciliation run is a persisted record that ties together:
+
+- one patient
+- one current visit
+- one clinician
+- one set of lane outputs
+- one conflict ledger
+- one set of suggested actions
+
+### Run creation behavior
+
+When a clinician creates a run:
+
+1. the server loads the current visit, artifacts, and longitudinal Twin context
+2. it creates a `ReconciliationRun` row with `running` status
+3. it computes four structured lanes:
+   - transcript
+   - artifact
+   - timeline
+   - reconciler
+4. it persists `ReconciliationAgentOutput` rows
+5. it persists `ReconciliationAction` rows
+6. it updates the run with:
+   - overall confidence
+   - consensus summary
+   - supported claims
+   - conflicts
+   - unresolved questions
+
+### Important honesty point
+
+Evidence Lab is persisted as separate lanes, but the internal implementation is mixed:
+
+- `transcript`, `artifact`, and `timeline` lanes are deterministic analysis functions over saved data
+- the final `reconciler` summary can use Nova if configured
+- the whole feature is synchronous request/response, not a queue-backed orchestration service
+
+That means Evidence Lab is a real reconciliation workspace, but it is not yet a system of four independent Bedrock worker agents.
+
+### Conflict and action logic
+
+The current conflict ledger specifically looks for patterns such as:
+
+- self-reported good adherence versus refill pressure
+- improving BP trend that is still above target
+- future appointment scheduled while lab-related work remains open
+
+Suggested actions can create:
+
+- `CarePlanItem`
+- `Appointment`
+
+Approval behavior:
+
+1. the clinician calls the action route with `approve` or `dismiss`
+2. approved actions write into the live chart
+3. `sourceActionId` on `CarePlanItem` and `Appointment` prevents duplicate writes on repeated approvals
+
+That idempotency behavior is important. It makes the Evidence Lab UI safe to click multiple times.
+
+### Evidence Lab flow
+
+```mermaid
+flowchart LR
+  A[Create Run] --> B[Load Current Visit]
+  B --> C[Load Visit Artifacts]
+  C --> D[Load Patient Twin]
+  D --> E[Transcript Lane]
+  D --> F[Artifact Lane]
+  D --> G[Timeline Lane]
+  E --> H[Conflict Ledger]
+  F --> H
+  G --> H
+  H --> I[Suggested Actions]
+  H --> J[Consensus Summary]
+  J --> K[Persist Run and Agent Outputs]
+  I --> K
+  K --> L[Clinician Approves or Dismisses]
+  L --> M[Write CarePlanItem or Appointment]
+```
 
 ## Grounded Chat Pipeline
 
-The grounded chat implementation in [`src/app/api/chat/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/chat/route.ts) is one of the strongest technical parts of the system.
+The shared chat route is implemented in [`src/app/api/chat/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/chat/route.ts).
 
-It is not a generic chatbot wrapper. It performs:
+Authorization paths:
 
-- access resolution
-- database retrieval
-- transcript reconstruction
-- blood pressure extraction across visits
-- prompt grounding
-- streaming response delivery
-- citation and visualization packaging
+- clinician session for chart access
+- share token for patient access
 
-### Authorization model
+Context loading includes:
 
-The route supports two access roles:
-
-- `clinician`
-- `patient`
-
-Clinician access requires:
-
-- authenticated session
-- visit exists
-- visit belongs to clinician
-- patient ID matches
-
-Patient access requires:
-
-- share token provided
-- share link exists
-- link is not revoked
-- link is not expired
-- patient ID matches
-- visit ID matches
-
-### Context loading
-
-The route loads:
-
-- visit
-- patient
-- visit documentation
-- appointments
-- care plan items
-- up to 10 recent patient visits for blood pressure history extraction
-
-The context is assembled into a `VisitContext` object that includes:
-
-- `patientName`
-- `transcriptText`
-- `summary`
-- `soapNotes`
-- `additionalNotes`
-- `appointments`
-- `planItems`
-- `bpHistory`
-
-### Transcript reconstruction
-
-Persisted transcript JSON is converted back to text in this format:
-
-```text
-[mm:ss] Doctor: ...
-[mm:ss] Patient: ...
-```
-
-That text form is then used in the grounded prompt.
-
-### Blood pressure extraction logic
-
-The route extracts blood pressure from three possible sources, in descending preference:
-
-- SOAP
-- summary
 - transcript
+- summary
+- SOAP note
+- additional notes
+- artifacts
+- appointments
+- care-plan items
+- BP history
+- optional Patient Twin context
 
-It uses regexes for:
+The route sends the final response as SSE-like events:
 
-- labeled blood pressure references
-- generic `systolic/diastolic` forms
-
-The code validates readings against plausible physiological ranges before accepting them.
-
-This is a very good detail. It prevents obviously invalid numeric pairs from being plotted or cited as vitals.
-
-### Visualization logic
-
-If the user asks a blood-pressure comparison or trend question, and enough history exists, the route produces a visualization payload:
-
-- `type: "bp_trend"`
-- title
-- description
-- chart-ready data array
-
-The frontend later turns this into a Recharts line chart.
-
-### Prompt construction
-
-The route builds separate system prompts for:
-
-- clinician
-- patient
-
-The patient prompt is stricter and more safety-oriented:
-
-- use simple language
-- avoid inventing prescriptions
-- prefer documented data
-- allow cautious general education if the chart does not answer directly
-- explicitly ground blood pressure history answers in retrieved visit context
-
-### Failure fallback
-
-If Nova generation fails, the route does not crash the experience. It falls back to deterministic handlers for:
-
-- blood pressure comparisons
-- appointment lookup
-- care plan task lookup
-- generic degraded-mode messaging
-
-This is an important reliability choice because chat remains partially functional even when inference is unavailable.
-
-### Chat pipeline flowchart
-
-```mermaid
-flowchart TD
-  A[POST /api/chat] --> B[Validate message, patientId, visitId]
-  B --> C{Clinician session?}
-  C -->|Yes| D[Authorize clinician against visit]
-  C -->|No| E{Share token present?}
-  E -->|Yes| F[Authorize patient token against visit]
-  E -->|No| G[Return 401]
-
-  D --> H[Load visit context]
-  F --> H
-
-  H --> I[Load transcript, summary, SOAP, appointments, care plan]
-  I --> J[Load recent visits for BP extraction]
-  J --> K[Construct role-specific prompt]
-  K --> L[Call Nova]
-  L --> M[Build citations and source details]
-  M --> N{BP trend question?}
-  N -->|Yes| O[Attach visualization payload]
-  N -->|No| P[Skip visualization]
-  O --> Q[Stream SSE response]
-  P --> Q
-```
-
-### Streaming strategy
-
-The route returns `text/event-stream`.
-
-It emits:
-
-- `conversation_id_set`
 - `tool_call`
 - `tool_result`
 - `message_chunk`
 - `message_metadata`
 - `message_complete`
 
-This is not Bedrock-native streaming. The route simulates streaming by chunking the final response text word-by-word. That is still useful from a UX standpoint because:
+Important note:
 
-- the frontend gets incremental rendering
-- tool events can be displayed before the final response completes
-- metadata can be sent separately from the text stream
+- this is simulated streaming
+- the route chunks a final response into incremental events for the frontend
+- it is not Bedrock-native token streaming
+
+That tradeoff is acceptable for the current UX because it keeps the client experience responsive while preserving tool metadata and citations.
+
+## Authentication and Session Model
+
+The authentication stack is intentionally conservative:
+
+- NextAuth credentials provider
+- Prisma-backed user lookup
+- bcrypt password hashes
+- JWT session strategy
+
+Relevant file:
+
+- [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth.ts)
+
+### Credentials authorize flow
+
+On sign-in:
+
+- user is looked up by email
+- bcrypt validates the password hash
+- the returned session carries clinician role and user id
+
+On sign-up:
+
+- a new clinician user is created
+- the password is hashed
+- the system attempts to seed the Sarah Johnson demo path for that clinician
+
+### Session hydration
+
+The JWT callback and session callback both rehydrate the user from the database when necessary so the session can carry:
+
+- id
+- email
+- name
+- role
+- practice name
+- specialty
+- onboarding state
+
+That keeps auth simple while still exposing clinician profile data to server and client components.
+
+## Bedrock and Amazon Nova Integration
+
+The Bedrock wrapper lives in [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts).
+
+Its API surface is intentionally small:
+
+- `generateNovaText()`
+- `generateNovaTextFromMessages()`
+- `generateNovaMultimodalText()`
+- `isNovaConfigured()`
+
+### Model selection
+
+Model IDs come from [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts).
+
+Current defaults:
+
+- `BEDROCK_NOVA_TEXT_MODEL_ID` -> `us.amazon.nova-2-lite-v1:0`
+- `BEDROCK_NOVA_FAST_MODEL_ID` -> `us.amazon.nova-2-lite-v1:0`
+- `BEDROCK_NOVA_MULTIMODAL_MODEL_ID` -> `us.amazon.nova-2-lite-v1:0`
+
+That defaulting behavior means the app is explicitly aligned to Nova 2 unless the deploy environment overrides it.
+
+### Where Nova is on the critical path
+
+Nova currently powers:
+
+- landing summary generation
+- landing SOAP generation
+- save-path summary generation
+- save-path SOAP generation
+- multimodal image artifact extraction
+- clinician and patient grounded chat
+- in-app assistant responses
+- optional Evidence Lab consensus summary
+
+### Where Nova is not the primary engine
+
+Nova is not the main engine for:
+
+- AWS Transcribe speech-to-text
+- Patient Twin object synthesis
+- finalize-visit post-processing
+- the first three Evidence Lab lanes
+
+This distinction should stay explicit in technical docs. The project is Nova-centered, but not every intelligence surface is a direct Bedrock invocation.
 
 ## Data Model
 
@@ -998,46 +585,68 @@ The Prisma schema is defined in [`prisma/schema.prisma`](C:/Users/manoj/CascadeP
 `User`
 
 - clinician identity
-- role
-- optional profile metadata
 - hashed password
+- optional profile data
 
 `Patient`
 
-- display name
-- optional date of birth
+- patient identity record
 
 `Visit`
 
-- ties patient to clinician
-- status
-- chief complaint
-- start and finalize timestamps
+- clinician and patient join point
+- visit status and timestamps
 
 `VisitDocumentation`
 
-- one-to-one with visit
 - transcript JSON
 - summary
 - SOAP note
 - additional notes
 
+`VisitArtifact`
+
+- image evidence metadata
+- extracted text
+- structured findings
+
 `ShareLink`
 
-- tokenized patient access handle
-- expiration and revocation support
+- patient access token
+- expiry and revocation support
 
 `Appointment`
 
-- visit-linked future scheduling artifact
+- visit-linked scheduling artifact
+- optional `sourceActionId` for Evidence Lab idempotency
 
 `CarePlanItem`
 
-- visit-linked tasking artifact
+- visit-linked task artifact
+- optional `sourceActionId` for Evidence Lab idempotency
 
 `GeneratedReport`
 
-- generated report content tied to visit, patient, and clinician
+- saved report output
+
+`ReconciliationRun`
+
+- one Evidence Lab run
+- confidence
+- consensus summary
+- supported claims
+- conflicts
+- unresolved questions
+
+`ReconciliationAgentOutput`
+
+- one persisted lane output per run
+
+`ReconciliationAction`
+
+- suggested chart-write action
+- approval state
+- applied record pointer
 
 ### Relational shape
 
@@ -1047,44 +656,53 @@ erDiagram
   USER ||--o{ APPOINTMENT : creates
   USER ||--o{ CARE_PLAN_ITEM : creates
   USER ||--o{ GENERATED_REPORT : creates
+  USER ||--o{ RECONCILIATION_RUN : owns
+  USER ||--o{ RECONCILIATION_ACTION : approves
 
   PATIENT ||--o{ VISIT : has
-  PATIENT ||--o{ SHARE_LINK : has
+  PATIENT ||--o{ SHARE_LINK : exposes
   PATIENT ||--o{ APPOINTMENT : has
   PATIENT ||--o{ CARE_PLAN_ITEM : has
   PATIENT ||--o{ GENERATED_REPORT : has
+  PATIENT ||--o{ RECONCILIATION_RUN : has
 
   VISIT ||--|| VISIT_DOCUMENTATION : documents
+  VISIT ||--o{ VISIT_ARTIFACT : includes
   VISIT ||--o{ SHARE_LINK : exposes
   VISIT ||--o{ APPOINTMENT : schedules
   VISIT ||--o{ CARE_PLAN_ITEM : plans
   VISIT ||--o{ GENERATED_REPORT : yields
+  VISIT ||--o{ RECONCILIATION_RUN : anchors
+
+  RECONCILIATION_RUN ||--o{ RECONCILIATION_AGENT_OUTPUT : stores
+  RECONCILIATION_RUN ||--o{ RECONCILIATION_ACTION : suggests
 ```
 
-### Why transcript JSON is stored as a string
+### Why transcript JSON remains a string
 
-`VisitDocumentation.transcriptJson` is a string column containing serialized transcript segments.
+`VisitDocumentation.transcriptJson` remains a serialized JSON string instead of a child table.
 
-That choice is pragmatic:
+That is still a pragmatic choice because it is:
 
-- easy to persist from Node without additional table fanout
-- easy to reconstruct into transcript text
-- compatible with both browser and Transcribe-produced transcripts
+- easy to persist from both browser and Transcribe outputs
+- easy to reconstruct into prompt-ready text
+- sufficient for the current product
 
-The tradeoff is queryability. If transcript segment analytics become important, a future evolution would normalize transcript chunks into their own table.
+The tradeoff remains queryability. If transcript analytics become a first-class requirement, a normalized transcript table would be the next step.
 
-## Configuration Model
+## Configuration and Health Model
 
 Runtime configuration lives in [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts).
 
-### Key environment variables
+Important environment variables:
 
 ```env
 DATABASE_URL=postgresql://...
 DIRECT_URL=postgresql://...
 AWS_REGION=us-east-1
-BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
-BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
+BEDROCK_NOVA_TEXT_MODEL_ID=us.amazon.nova-2-lite-v1:0
+BEDROCK_NOVA_FAST_MODEL_ID=us.amazon.nova-2-lite-v1:0
+BEDROCK_NOVA_MULTIMODAL_MODEL_ID=us.amazon.nova-2-lite-v1:0
 TRANSCRIBE_LANGUAGE_CODE=en-US
 S3_BUCKET_AUDIO_UPLOADS=synth-nova-audio-dev
 NEXTAUTH_SECRET=<secret>
@@ -1092,332 +710,133 @@ NEXTAUTH_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Derived capability checks
-
-The config layer exposes boolean capability functions such as:
+Derived capability checks include:
 
 - `isNovaConfigured()`
 - `isAwsTranscribeConfigured()`
 - `isAuthConfigured()`
 - `isPublicUrlConfigured()`
-- `isUploadsBucketConfigured()`
 
-This is a simple but effective pattern. Route handlers can fail fast with meaningful messages before hitting downstream services.
+The health route at [`GET /api/health`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/health/route.ts):
 
-## Health Check Model
+- probes database reachability
+- reports Nova config presence
+- reports auth config presence
+- reports public URL presence
+- reports uploads bucket and Transcribe config presence
 
-The health route at [`src/app/api/health/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/health/route.ts) validates:
+Current `ok` logic requires:
 
-- database environment presence
-- live database reachability
-- Nova configuration presence
-- auth configuration presence
-- public URL configuration presence
-- upload bucket configuration presence
-- AWS Transcribe configuration presence
+- database reachable
+- Nova configured
+- auth configured
+- public URL configured
 
-The route reports these as a JSON object with:
+Transcribe readiness is reported, but it is not part of the overall health success condition.
 
-- `ok`
-- `service`
-- `version`
-- `checks`
-- `config`
-- `timestamp`
+## Failure Behavior and Fallbacks
 
-This is used both as:
+### Nova unavailable
 
-- application diagnostics
-- ALB target-group health check path
+Current behavior depends on the route:
 
-That dual usage is appropriate because it gives infrastructure and developers the same operational truth source.
-
-## AWS Infrastructure Topology
-
-The Terraform implementation is in [`infra/terraform/main.tf`](C:/Users/manoj/CascadeProjects/Synth/infra/terraform/main.tf).
-
-### Core provisioned resources
-
-The default path provisions:
-
-- VPC
-- two public subnets
-- two private subnets
-- internet gateway
-- NAT gateway
-- public and private route tables
-- ECR repository
-- S3 uploads bucket
-- CloudWatch log group
-- DB subnet group
-- ALB security group
-- app security group
-- DB security group
-- PostgreSQL RDS instance
-- Secrets Manager secret and secret version
-- ECS cluster
-- ECS execution role
-- ECS task role
-- ALB
-- target group
-- HTTP listener
-- ECS task definition
-- ECS service
-
-### Terraform network behavior
-
-If no VPC or subnet IDs are supplied:
-
-- Terraform creates the network itself
-- ALB goes in public subnets
-- ECS tasks and RDS go in private subnets
-- private subnets use a NAT gateway for outbound access
-
-This is the right default for a self-contained AWS demo deployment.
-
-### IAM behavior
-
-The ECS task role is granted:
-
-- `bedrock:InvokeModel`
-- `bedrock:InvokeModelWithResponseStream`
-- `transcribe:StartTranscriptionJob`
-- `transcribe:GetTranscriptionJob`
-- `secretsmanager:GetSecretValue`
-- `s3:GetObject`
-- `s3:PutObject`
-- `s3:ListBucket`
-
-The ECS execution role is additionally granted secrets retrieval for the app secret.
-
-This distinction matters:
-
-- execution role pulls secrets into the task environment
-- task role allows the app code itself to call AWS services during runtime
-
-### Secrets bootstrap behavior
-
-Terraform generates and writes:
-
-- `DATABASE_URL`
-- `DIRECT_URL`
-- `NEXTAUTH_SECRET`
-
-into the app secret by default.
-
-This is a good deployment choice for a single-stack demo because it reduces manual setup and avoids the common "infra created but app is still unbootable" failure mode.
-
-### Infrastructure relationship diagram
-
-```mermaid
-flowchart LR
-  subgraph Net[VPC]
-    PUB1[Public Subnet A]
-    PUB2[Public Subnet B]
-    PRIV1[Private Subnet A]
-    PRIV2[Private Subnet B]
-    IGW[Internet Gateway]
-    NAT[NAT Gateway]
-  end
-
-  ALB[Application Load Balancer]
-  ECS[ECS Fargate Service]
-  RDS[(RDS PostgreSQL)]
-  S3[(S3 Uploads Bucket)]
-  SEC[Secrets Manager]
-  ECR[ECR Repository]
-  CW[CloudWatch Logs]
-  BR[Amazon Bedrock]
-  TR[AWS Transcribe]
-
-  IGW --> PUB1
-  IGW --> PUB2
-  PUB1 --> NAT
-  NAT --> PRIV1
-  NAT --> PRIV2
-
-  PUB1 --> ALB
-  PUB2 --> ALB
-  PRIV1 --> ECS
-  PRIV2 --> ECS
-  PRIV1 --> RDS
-  PRIV2 --> RDS
-
-  ECR --> ECS
-  SEC --> ECS
-  ECS --> CW
-  ECS --> S3
-  ECS --> BR
-  ECS --> TR
-  ECS --> RDS
-```
-
-## Why `us-east-1` Is the Default Region
-
-The account inspection performed during setup showed that `us-east-1` had the broadest Nova availability in this AWS account, including:
-
-- Nova text models
-- additional Nova multimodal variants
-- Nova speech-related variants
-
-For that reason, the current default deployment recommendation is:
-
-- region: `us-east-1`
-- text model: `amazon.nova-lite-v1:0`
-- fast model: `amazon.nova-micro-v1:0`
-- transcription language: `en-US`
-
-This is a practical default, not a hard requirement. The app can run elsewhere if the required Bedrock model access exists there.
-
-## Operational Failure Modes
-
-The system already contains several deliberate guardrails.
-
-### Bedrock unavailable
-
-Observed behavior:
-
-- routes that depend on Nova fail with clear errors
-- clinical note generation falls back to deterministic summaries/SOAP when possible
-- chat falls back to deterministic answer paths for certain request classes
+- summary and SOAP generation fall back to deterministic builders in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+- multimodal artifact extraction falls back to conservative placeholder artifacts
+- chat falls back to deterministic answers for things like appointments, care-plan items, evidence references, and BP trends
+- Evidence Lab still persists lane outputs because its transcript, artifact, and timeline passes are mostly deterministic, but the final reconciler summary falls back to plain server-generated text
 
 ### Transcribe unavailable
 
-Observed behavior:
-
-- `/api/transcribe` returns a clear configuration error
-- transcript-text workflows still work
-- landing preview remains usable
+- audio preview and authenticated server transcription return clear `503` errors
+- transcript text workflows still function
 
 ### Database unavailable
 
-Observed behavior:
-
-- health route reports `databaseReachable: false`
-- auth and persistence flows fail
-- non-persistent public preview remains the least dependent mode
+- auth, save, Twin, Evidence Lab, and chat contexts fail
+- `/api/health` returns `503`
 
 ### Invalid share token
 
-Observed behavior:
-
-- chat route returns authorization failure
-- patient data is not loaded
+- patient chat is denied before any visit context is loaded
 
 ### Empty or malformed transcript
 
-Observed behavior:
+- preview and save reject the request with `400`
 
-- preview route returns `400`
-- save route returns `400`
-- no low-quality synthetic note generation is performed from empty input
+## AWS Infrastructure Topology
+
+The Terraform scaffolding provisions the standard demo stack:
+
+- VPC networking
+- ECS Fargate service
+- ECR image repository
+- Application Load Balancer
+- RDS PostgreSQL
+- S3 uploads bucket
+- CloudWatch logs
+- Secrets Manager secrets
+- IAM permissions for Bedrock, S3, and Transcribe
+
+This is the right shape for the current application because:
+
+- the Next.js runtime stays simple
+- the data plane is small and conventional
+- Bedrock and Transcribe stay off-box as managed services
+- the deployment remains understandable for judges and reviewers
 
 ## Current Tradeoffs and Intentional Shortcuts
 
-This implementation is strong for a hackathon and technically coherent, but there are several intentional shortcuts.
+### Evidence Lab lanes are not all Bedrock workers
 
-### Synchronous Transcribe polling
+This is the most important architectural caveat. Evidence Lab persists separate lanes and presents a real reconciliation UX, but the internal implementation is still a mixed model:
 
-Good:
+- deterministic extraction for transcript, artifact, and timeline lanes
+- optional Nova for the final reconciler summary
 
-- simple
-- minimal moving parts
+That is good enough for the current product, but it is not yet a full distributed agent runtime.
 
-Tradeoff:
+### Patient Twin is deterministic
 
-- not ideal for production-scale request handling
+The Twin is built from real data, but not by a dedicated model call. That makes it reliable and inspectable, at the cost of less generative flexibility.
 
-### Transcript JSON storage
+### Transcribe polling is synchronous
 
-Good:
+The current route waits for AWS Transcribe completion inline. That is acceptable for a demo path, but not ideal for large-scale production workloads.
 
-- easy to implement
-- easy to replay into prompts
+### Chat streaming is simulated
 
-Tradeoff:
-
-- limited structured querying
-
-### Simulated SSE word streaming
-
-Good:
-
-- better UX
-- simpler than full Bedrock streaming integration
-
-Tradeoff:
-
-- not true token streaming from the model
-
-### Rule-based BP extraction
-
-Good:
-
-- transparent
-- deterministic
-- enough for a demo trend visualization
-
-Tradeoff:
-
-- not a full clinical information extraction system
+The UX streams words and metadata as SSE events, but the underlying model response is assembled first.
 
 ### Credentials-only auth
 
-Good:
+This is intentionally simple and correct for the hackathon path, but it is not the final shape for enterprise identity.
 
-- very low configuration overhead
-- full control inside the app
-- easy judge/demo access
+## Production-Path Evolutions
 
-Tradeoff:
+If this system moved past the current hackathon scope, the cleanest next steps would be:
 
-- not enterprise SSO
-- no managed user pool features
-
-## Recommended Production-Path Evolutions
-
-If this system were taken beyond hackathon scope, the highest-value next improvements would be:
-
-1. asynchronous transcription jobs with persistent job state
-2. normalized transcript chunk storage in PostgreSQL
-3. Bedrock streaming integration instead of synthetic SSE word chunking
-4. stronger prompt and output-schema enforcement for SOAP generation
-5. structured retrieval layer for grounded chat instead of prompt-only context packing
-6. HTTPS and custom domain termination on ALB with ACM
-7. richer audit logging around access to patient share links
-8. role expansion beyond a single clinician role
-
-## Deployment Sequence
-
-The intended deployment sequence remains:
-
-1. build and push the app image to ECR
-2. create `infra/terraform/terraform.tfvars` from the example file
-3. run `terraform init`
-4. run `terraform plan`
-5. run `terraform apply`
-6. run `npx prisma migrate deploy` against the created RDS instance
-7. validate `/api/health`
-8. validate login, transcription, save flow, finalize flow, and patient chat
+1. move Transcribe into an asynchronous job model
+2. normalize transcript chunks into their own table
+3. make Evidence Lab lanes model-driven or tool-driven in a more explicit orchestration layer
+4. add stronger audit metadata around reconciliation decisions
+5. add external-system integration for approved actions
 
 ## Final Technical Positioning
 
-The most important technical claim this project can make is not merely that it "uses Amazon Nova." The stronger and more accurate claim is:
+The strongest accurate technical claim this project can make is:
 
-Synth uses Amazon Nova as the central reasoning and documentation layer inside a full AWS-native clinical workflow stack.
+Synth uses Amazon Nova as the central documentation, multimodal extraction, and grounded response layer inside a full AWS-native clinical workflow application.
 
-That stack is not decorative. Nova sits on the actual critical path for:
+That claim is stronger than simply saying the app "uses Nova," and more accurate than claiming every smart surface is model-native. Nova is genuinely on the critical path for the parts of the app that matter most to judges:
 
-- transcript summarization
-- SOAP note generation
-- grounded assistant response generation
+- documentation generation
+- multimodal evidence interpretation
+- grounded chat
+- clinician assistant behavior
 
-And those generation paths are surrounded by real AWS infrastructure for:
+Around that core, the product now has two high-value deterministic layers:
 
-- deployment
-- storage
-- transcription
-- secrets
-- logging
+- Patient Twin for longitudinal memory
+- Evidence Lab for persisted evidence arbitration and chart-ready actions
 
-In other words, the application is not a thin demo wrapper around a single model call. It is a full-stack workflow application where Amazon Nova is the core intelligence layer and AWS services provide the operating substrate around it.
+That combination is what makes the current codebase more than a thin model wrapper.

@@ -19,6 +19,7 @@ import {
   PencilLine,
   Search,
   Send,
+  Scale,
   Sparkles,
   Stethoscope,
 } from 'lucide-react'
@@ -192,6 +193,8 @@ export function ClinicianWorkspace({
       'Open transcribe',
       'Open SOAP notes',
       'Which visits are still open today?',
+      parsed[0] ? `Open ${parsed[0].patient.displayName}'s patient twin` : 'Open patient twin',
+      parsed[0] ? `Open ${parsed[0].patient.displayName}'s evidence lab` : 'Open evidence lab',
       parsed[0] ? `Open ${parsed[0].patient.displayName}\'s notes` : 'Show my most recent patient record',
     ]
 
@@ -439,9 +442,11 @@ export function ClinicianWorkspace({
                 <div className="mt-5 rounded-2xl border border-dashed border-[#e2d3bd] bg-white/55 p-4 text-sm text-slate-600">No prompt submitted yet. Use the composer above to send a real request.</div>
               )}
 
-              <div className="mt-5 grid grid-cols-2 gap-4">
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Link href="/transcribe" className="rounded-2xl border border-[#eadfcd] bg-white/70 p-4 text-sm text-slate-700 hover:bg-white"><div className="flex items-center gap-2"><FileAudio2 size={15} />Transcribe</div><p className="mt-2.5 text-xs text-slate-500">Review audio backlog</p></Link>
                 <Link href="/soap-notes" className="rounded-2xl border border-[#eadfcd] bg-white/70 p-4 text-sm text-slate-700 hover:bg-white"><div className="flex items-center gap-2"><ClipboardList size={15} />SOAP Notes</div><p className="mt-2.5 text-xs text-slate-500">Open documentation tools</p></Link>
+                <Link href="/patient-twin" className="rounded-2xl border border-[#eadfcd] bg-white/70 p-4 text-sm text-slate-700 hover:bg-white"><div className="flex items-center gap-2"><Sparkles size={15} />Patient Twin</div><p className="mt-2.5 text-xs text-slate-500">Open cross-visit memory</p></Link>
+                <Link href="/reconciliation" className="rounded-2xl border border-[#eadfcd] bg-white/70 p-4 text-sm text-slate-700 hover:bg-white"><div className="flex items-center gap-2"><Scale size={15} />Evidence Lab</div><p className="mt-2.5 text-xs text-slate-500">Inspect conflicts and approve actions</p></Link>
               </div>
             </div>
           </aside>

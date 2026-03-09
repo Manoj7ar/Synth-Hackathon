@@ -16,6 +16,7 @@ type AssistantRequestBody = {
 
 type ClinicianRecord = {
   visitId: string
+  patientId: string
   patientName: string
   summary: string
   soapNotes: string
@@ -106,7 +107,34 @@ function detectNavigationIntent(message: string, records: ClinicianRecord[]): Na
   ])
 
   const wantsNotes = includesAny(normalized, ['soap', 'note', 'notes', 'record', 'records'])
+  const wantsTwin = includesAny(normalized, ['patient twin', 'twin', 'timeline', 'longitudinal', 'history'])
+  const wantsEvidenceLab = includesAny(normalized, [
+    'evidence lab',
+    'reconciliation',
+    'reconcile',
+    'conflict',
+    'conflicts',
+    'agent output',
+  ])
   const patientMatch = findBestPatientMatch(message, records)
+
+  if (wantsNavigation && patientMatch && wantsEvidenceLab) {
+    return {
+      href: `/reconciliation/${patientMatch.patientId}`,
+      label: `${patientMatch.patientName}'s Evidence Lab`,
+      reason: 'evidence_lab',
+      patientName: patientMatch.patientName,
+    }
+  }
+
+  if (wantsNavigation && patientMatch && wantsTwin) {
+    return {
+      href: `/patient-twin/${patientMatch.patientId}`,
+      label: `${patientMatch.patientName}'s Patient Twin`,
+      reason: 'patient_twin',
+      patientName: patientMatch.patientName,
+    }
+  }
 
   if (wantsNavigation && patientMatch && wantsNotes) {
     return {
@@ -131,6 +159,12 @@ function detectNavigationIntent(message: string, records: ClinicianRecord[]): Na
   }
   if (includesAny(normalized, ['soap notes', 'soap list', 'saved records', 'patient records'])) {
     return { href: '/soap-notes', label: 'SOAP Notes', reason: 'soap_notes' }
+  }
+  if (includesAny(normalized, ['patient twin', 'timeline', 'longitudinal', 'patient history'])) {
+    return { href: '/patient-twin', label: 'Patient Twin', reason: 'patient_twin' }
+  }
+  if (includesAny(normalized, ['evidence lab', 'reconciliation', 'conflict ledger', 'agent outputs'])) {
+    return { href: '/reconciliation', label: 'Evidence Lab', reason: 'evidence_lab' }
   }
   if (includesAny(normalized, ['ai chat', 'chat page', 'clinician'])) {
     return { href: '/clinician', label: 'AI Chat', reason: 'ai_chat' }
@@ -163,7 +197,7 @@ function buildRecordsContext(records: ClinicianRecord[]): string {
     .slice(0, 15)
     .map((record, index) => {
       const summaryPreview = record.summary.replace(/\s+/g, ' ').slice(0, 180)
-      return `${index + 1}. ${record.patientName} | visitId=${record.visitId} | updated=${record.updatedAt.toISOString()} | summary=${summaryPreview}`
+      return `${index + 1}. ${record.patientName} | patientId=${record.patientId} | visitId=${record.visitId} | updated=${record.updatedAt.toISOString()} | summary=${summaryPreview}`
     })
     .join('\n')
 }
@@ -260,10 +294,10 @@ function buildFallbackResponse(
   }
 
   if (matchedPatient) {
-    return `${matchedPatient.patientName} has a saved record. You can ask me to open it by saying "open ${matchedPatient.patientName}'s notes".`
+    return `${matchedPatient.patientName} has a saved record. You can ask me to open the SOAP notes, patient twin, or Evidence Lab from here.`
   }
 
-  return `I can help with patient notes and app navigation. Try: "Open Sarah's notes", "Open transcribe", or "Open technology".`
+  return `I can help with patient notes, the patient twin, Evidence Lab, and app navigation. Try: "Open Sarah's evidence lab", "Open transcribe", or "Open technology".`
 }
 
 export async function POST(req: NextRequest) {
@@ -295,6 +329,7 @@ export async function POST(req: NextRequest) {
             select: {
               patient: {
                 select: {
+                  id: true,
                   displayName: true,
                 },
               },
@@ -307,6 +342,7 @@ export async function POST(req: NextRequest) {
 
       records = docs.map((doc) => ({
         visitId: doc.visitId,
+        patientId: doc.visit.patient.id,
         patientName: doc.visit.patient.displayName,
         summary: doc.summary,
         soapNotes: doc.soapNotes,

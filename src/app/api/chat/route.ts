@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { generateNovaText } from '@/lib/nova'
+import {
+  formatPatientTwinForPrompt,
+  getPatientTwinForVisit,
+  selectPatientTwinCitations,
+  type PatientTwinCitation,
+  type PatientTwinContext as LongitudinalPatientTwinContext,
+} from '@/lib/patient-twin'
 import { prisma } from '@/lib/prisma'
 import type { TranscriptSegment } from '@/lib/clinical-notes'
 import {
@@ -22,6 +29,7 @@ type ChatRequestBody = {
 }
 
 interface VisitContext {
+  patientId: string
   patientName: string
   transcriptText: string
   summary: string
@@ -96,6 +104,7 @@ export async function POST(req: NextRequest) {
       conversationId,
       patientId,
       visitId,
+      agentId,
       shareToken,
     } = body
 
@@ -124,6 +133,7 @@ export async function POST(req: NextRequest) {
       message,
       visitId,
       role: access.role,
+      agentId: agentId ?? null,
     })
 
     return streamResponse(
@@ -202,10 +212,12 @@ async function generateNovaResponse({
   message,
   visitId,
   role,
+  agentId,
 }: {
   message: string
   visitId: string
   role: ChatAccessRole
+  agentId: string | null
 }) {
   const toolEvents: ChatToolEvent[] = []
   toolEvents.push({ type: 'tool_call', tool: 'synth_load_visit_context', params: { visitId } })
@@ -222,6 +234,24 @@ async function generateNovaResponse({
     }
   }
 
+  const twinMode = role === 'clinician' && agentId === 'synth_patient_twin'
+  const patientTwin = twinMode ? await getPatientTwinForVisit(visitId) : null
+
+  if (twinMode) {
+    toolEvents.push({ type: 'tool_call', tool: 'synth_build_patient_twin', params: { visitId } })
+    toolEvents.push({
+      type: 'tool_result',
+      result: patientTwin
+        ? {
+            visitCount: patientTwin.visitCount,
+            trends: patientTwin.trendSignals.length,
+            insights: patientTwin.evidenceInsights.length,
+            openPlanItems: patientTwin.openPlanItems.length,
+          }
+        : { error: 'Patient twin unavailable' },
+    })
+  }
+
   toolEvents.push({
     type: 'tool_result',
     result: {
@@ -231,6 +261,7 @@ async function generateNovaResponse({
       appointments: context.appointments.length,
       planItems: context.planItems.length,
       bpPoints: context.bpHistory.length,
+      patientTwin: patientTwin ? 'loaded' : twinMode ? 'missing' : 'not_requested',
     },
   })
 
@@ -315,8 +346,20 @@ async function generateNovaResponse({
           })
           .join('\n\n')
 
+  const patientTwinContext =
+    patientTwin && twinMode
+      ? formatPatientTwinForPrompt(patientTwin)
+      : 'Patient Twin context not requested for this conversation.'
+
   const systemPrompt =
-    role === 'clinician'
+    twinMode
+      ? `You are Synth Patient Twin, a clinician-facing longitudinal copilot.
+Answer using ONLY the provided patient twin timeline, current visit note, artifact evidence, appointments, and care-plan data.
+Focus on what changed across visits, what evidence supports it, and what needs follow-up next.
+Do not invent diagnoses or treatment changes.
+Keep answers direct and reviewable.
+Prefer citing artifact evidence with [Artifact: label] when available.`
+      : role === 'clinician'
       ? `You are Synth, an AI clinical assistant for clinicians.
 Answer using ONLY the provided visit context.
 If uncertain, say so directly.
@@ -356,6 +399,9 @@ ${appointmentContext}
 --- CARE PLAN ---
 ${planContext}
 
+--- PATIENT TWIN ---
+${patientTwinContext}
+
 --- BLOOD PRESSURE HISTORY ---
 ${bpHistoryContext}
 
@@ -375,14 +421,29 @@ Respond helpfully and safely.`
     })
   } catch (error) {
     console.error('Nova generation failed, using deterministic fallback:', error)
-    responseText = buildDeterministicFallback(message, context)
+    responseText = buildDeterministicFallback(message, context, patientTwin, twinMode)
   }
 
   const visualization =
-    role === 'patient' ? buildBpVisualizationIfNeeded(message, context.bpHistory) : undefined
-  const citations = buildCitationsFromResponse(responseText, context)
+    role === 'patient' || twinMode ? buildBpVisualizationIfNeeded(message, context.bpHistory) : undefined
+  const twinCitations =
+    twinMode && patientTwin
+      ? selectPatientTwinCitations({
+          twin: patientTwin,
+          question: message,
+          responseText,
+        })
+      : null
+  const citations = twinCitations
+    ? twinCitations.map((citation) => ({
+        source: citation.source,
+        excerpt: citation.excerpt,
+      }))
+    : buildCitationsFromResponse(responseText, context)
   const sourceDetails =
-    visualization && visualization.data.length > 0
+    twinCitations
+      ? buildSourceDetailsFromPatientTwinCitations(twinCitations)
+      : visualization && visualization.data.length > 0
       ? buildTrendSourceDetails(visualization, context.bpHistory)
       : buildSourceDetailsFromCitations(citations)
 
@@ -417,6 +478,7 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
     | {
         id: string
         patientId: string
+        clinicianId: string
         patient: { displayName: string }
         documentation: {
           transcriptJson: string
@@ -455,7 +517,7 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
   const artifacts = visit.artifacts.map((artifact) => parseStoredArtifact(artifact))
 
   const patientVisits = await prisma.visit.findMany({
-    where: { patientId: visit.patientId },
+    where: { patientId: visit.patientId, clinicianId: visit.clinicianId },
     include: {
       documentation: true,
       artifacts: {
@@ -492,6 +554,7 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
     .slice(-6)
 
   return {
+    patientId: visit.patientId,
     patientName: visit.patient.displayName,
     transcriptText,
     summary: visit.documentation?.summary ?? '',
@@ -880,6 +943,16 @@ function buildSourceDetailsFromCitations(citations: MessageCitation[]): MessageS
   }))
 }
 
+function buildSourceDetailsFromPatientTwinCitations(
+  citations: PatientTwinCitation[]
+): MessageSourceDetail[] {
+  return citations.map((citation) => ({
+    source: citation.source,
+    visitDate: formatLongDate(citation.visitDate),
+    excerpt: citation.excerpt,
+  }))
+}
+
 function buildTrendSourceDetails(
   visualization: ChatVisualizationPayload,
   bpHistory: BloodPressurePoint[]
@@ -1017,8 +1090,20 @@ function formatLongDate(date: Date): string {
   }).format(date)
 }
 
-function buildDeterministicFallback(question: string, context: VisitContext): string {
+function buildDeterministicFallback(
+  question: string,
+  context: VisitContext,
+  patientTwin?: LongitudinalPatientTwinContext | null,
+  twinMode = false
+): string {
   const lower = question.toLowerCase()
+
+  if (twinMode && patientTwin) {
+    const twinFallback = buildPatientTwinFallback(question, patientTwin)
+    if (twinFallback) {
+      return twinFallback
+    }
+  }
 
   if (shouldVisualizeBloodPressure(question)) {
     if (context.bpHistory.length < 2) {
@@ -1081,6 +1166,74 @@ function buildDeterministicFallback(question: string, context: VisitContext): st
   }
 
   return 'I am temporarily rate-limited by the AI service right now, but I can still answer using your visit records if you ask about appointments, care tasks, or blood pressure trends. [Summary] [SOAP]'
+}
+
+function buildPatientTwinFallback(
+  question: string,
+  patientTwin: LongitudinalPatientTwinContext
+) {
+  const lower = question.toLowerCase()
+
+  if (shouldVisualizeBloodPressure(question) && patientTwin.bpHistory.length >= 2) {
+    const first = patientTwin.bpHistory[0]
+    const latest = patientTwin.bpHistory[patientTwin.bpHistory.length - 1]
+    const systolicDelta = latest.systolic - first.systolic
+    const diastolicDelta = latest.diastolic - first.diastolic
+    const direction =
+      systolicDelta < 0 || diastolicDelta < 0 ? 'improved' : systolicDelta === 0 && diastolicDelta === 0 ? 'held steady' : 'worsened'
+
+    return [
+      `Across ${patientTwin.visitCount} visits, ${patientTwin.patientName.split(' ')[0]}'s blood pressure ${direction} from ${first.systolic}/${first.diastolic} to ${latest.systolic}/${latest.diastolic}.`,
+      `The strongest evidence comes from the longitudinal BP logs and current visit summary.`,
+      'I also added the trend graph below for review.',
+      'Sources: [Artifact: Initial home blood pressure log photo] [Artifact: Home blood pressure log photo] [Summary]',
+    ].join(' ')
+  }
+
+  if (
+    lower.includes('medication') ||
+    lower.includes('adherence') ||
+    lower.includes('refill') ||
+    lower.includes('dose')
+  ) {
+    const medication = patientTwin.medications[0]
+    const risk = patientTwin.followUpRisks.find((item) => /medication|refill|dose/i.test(item))
+    if (!medication) {
+      return null
+    }
+
+    return [
+      `${patientTwin.patientName.split(' ')[0]}'s longitudinal record supports ongoing ${medication.name}${medication.dosage ? ` ${medication.dosage}` : ''} use.`,
+      risk ? risk : 'The main adherence signal came from the refill pressure and missed travel doses documented mid-course.',
+      'Sources: [Artifact: Lisinopril bottle photo] [Transcript 00:34] [Summary]',
+    ].join(' ')
+  }
+
+  if (
+    lower.includes('follow') ||
+    lower.includes('next') ||
+    lower.includes('what changed') ||
+    lower.includes('what should')
+  ) {
+    const pending = patientTwin.openPlanItems.slice(0, 2)
+    const pendingText =
+      pending.length === 0
+        ? 'No pending care-plan items are saved right now.'
+        : pending
+            .map((item, index) => `${index + 1}. ${item.title}${item.details ? ` - ${compactWhitespace(item.details)}` : ''}`)
+            .join(' ')
+
+    return [
+      `${patientTwin.storyline}`,
+      `Next follow-up focus: ${pendingText}`,
+      patientTwin.nextAppointment
+        ? `Next appointment: ${patientTwin.nextAppointment.title} on ${formatLongDate(patientTwin.nextAppointment.scheduledFor)}.`
+        : 'No future appointment is currently scheduled.',
+      'Sources: [Plan] [Appointment] [Summary]',
+    ].join(' ')
+  }
+
+  return null
 }
 
 function streamResponse(data: StreamPayload, existingConversationId: string | null) {

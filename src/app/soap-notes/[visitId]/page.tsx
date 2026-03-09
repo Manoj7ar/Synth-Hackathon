@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
-import { LogOut, Plus } from 'lucide-react'
+import { BrainCircuit, LogOut, Plus, Scale } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { AdditionalNotesEditor } from '@/components/soap-notes/AdditionalNotesEditor'
 import type { TranscriptSegment } from '@/lib/clinical-notes'
@@ -105,6 +105,18 @@ export default async function SoapNotesDetailPage({
 
       <div className="fixed right-4 top-4 z-20 flex items-center gap-2 md:right-6 md:top-6">
         <PatientAgentShareButton shareToken={shareToken} />
+        <Button asChild variant="ghost">
+          <Link href={`/patient-twin/${visit.patientId}`}>
+            <BrainCircuit size={16} className="mr-2" />
+            Patient Twin
+          </Link>
+        </Button>
+        <Button asChild variant="ghost">
+          <Link href={`/reconciliation/${visit.patientId}`}>
+            <Scale size={16} className="mr-2" />
+            Evidence Lab
+          </Link>
+        </Button>
         <Button asChild>
           <Link href="/clinician/new-visit">
             <Plus size={16} className="mr-2" />

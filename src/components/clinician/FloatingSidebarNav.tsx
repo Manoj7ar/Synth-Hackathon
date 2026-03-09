@@ -3,14 +3,22 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { type ComponentType, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, FileAudio, MessageSquare, ScrollText } from 'lucide-react'
+import {
+  BrainCircuit,
+  ChevronLeft,
+  ChevronRight,
+  FileAudio,
+  MessageSquare,
+  Scale,
+  ScrollText,
+} from 'lucide-react'
 import {
   FLOATING_SIDEBAR_STATE_EVENT,
   type FloatingSidebarStateDetail,
 } from '@/lib/floating-sidebar-events'
 
 type NavItem = {
-  key: 'ai-chat' | 'transcribe' | 'soap-notes'
+  key: 'ai-chat' | 'transcribe' | 'soap-notes' | 'patient-twin' | 'evidence-lab'
   label: string
   href: string
   icon: ComponentType<{ size?: number; className?: string }>
@@ -20,6 +28,8 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'ai-chat', label: 'AI Chat', href: '/clinician', icon: MessageSquare },
   { key: 'transcribe', label: 'Transcribe', href: '/transcribe', icon: FileAudio },
   { key: 'soap-notes', label: 'SOAP Notes', href: '/soap-notes', icon: ScrollText },
+  { key: 'patient-twin', label: 'Patient Twin', href: '/patient-twin', icon: BrainCircuit },
+  { key: 'evidence-lab', label: 'Evidence Lab', href: '/reconciliation', icon: Scale },
 ]
 
 type FloatingSidebarNavProps = {

@@ -5,119 +5,144 @@
 </p>
 
 <p align="center">
-  <strong>Amazon Nova-powered clinical documentation and patient follow-up assistant built for the AWS hackathon.</strong>
+  <strong>Amazon Nova-powered multimodal clinical evidence copilot built for the AWS hackathon.</strong>
 </p>
 
-Synth is a full-stack clinical workflow application for turning visit conversations and supporting clinical evidence into structured documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, optional multimodal image evidence review, Prisma-backed clinician authentication, and AWS Transcribe-backed server audio processing.
+Synth is a full-stack clinical workflow application for turning visit conversations and supporting evidence into structured documentation, longitudinal patient memory, and grounded follow-up actions.
 
-It is built to show an end-to-end clinical workflow on AWS:
+The product is built around five connected surfaces:
 
-- capture or upload visit audio
-- transcribe the conversation
-- attach supporting clinical image evidence such as a BP log or medication bottle
-- generate a summary and SOAP note with Amazon Nova
-- persist the visit and create a patient share link
-- answer grounded follow-up questions from the saved visit record
-
-The app is designed around an AWS-native runtime:
-
-- Next.js on ECS Fargate
-- Amazon Bedrock for Nova inference
-- PostgreSQL on RDS
-- Secrets Manager for runtime secrets
-- S3 for upload/transcription storage
-- CloudWatch for logs
+- public transcript or audio to SOAP preview
+- clinician visit capture and save flow
+- multimodal evidence artifacts such as BP logs and medication bottle photos
+- Patient Twin for cross-visit memory and trend synthesis
+- Evidence Lab for reconciliation, conflict review, and chart-ready approvals
 
 ## What Synth Does
 
-- Converts visit transcripts into summaries and SOAP notes
-- Supports transcript, audio, and optional image-evidence preview directly from the landing page
-- Saves visit documentation for authenticated clinician workflows
-- Stores visit-linked evidence artifacts with extracted findings
-- Creates patient share links for grounded post-visit chat
-- Extracts blood pressure history across visits and visualizes trends in chat
-- Supports Prisma-backed clinician authentication with NextAuth credentials sessions
-- Supports AWS Transcribe-backed server audio transcription
+- Generates visit summaries and SOAP notes from transcripts with Amazon Nova
+- Supports landing-page preview from transcript text or audio, with optional image evidence
+- Extracts structured evidence from uploaded clinical images such as BP logs, medication labels, and lab photos
+- Persists visit documentation, evidence artifacts, share links, appointments, care-plan items, and reports
+- Builds a longitudinal Patient Twin across saved visits
+- Runs an Evidence Lab reconciliation workflow across transcript, artifact, and timeline evidence
+- Lets clinicians approve suggested actions into real `CarePlanItem` and `Appointment` records
+- Supports grounded patient follow-up chat from saved visit data
+- Uses AWS Transcribe for server-side audio transcription when configured
 
 ## Why It Matters
 
-Clinical documentation and post-visit communication are high-friction workflows. Synth compresses that flow into a single application:
+Clinical documentation, follow-up planning, and evidence review are usually fragmented across notes, images, logs, and memory. Synth compresses that flow into one application:
 
-- clinicians move from raw conversation to structured documentation faster
-- patient follow-up stays grounded in the actual visit record
-- the AWS stack is not just hosting, it is part of the product workflow through Nova, Transcribe, S3, ECS, RDS, and Secrets Manager
+- the clinician can move from raw visit evidence to structured documentation faster
+- patient follow-up stays grounded in the saved record instead of generic chat behavior
+- longitudinal trends and unresolved risks stay visible across visits
+- the AWS stack is part of the runtime, not just hosting, through Nova, Transcribe, S3, ECS, RDS, and Secrets Manager
 
-## Product Flow
+## Product Surfaces
 
 ### Public preview
 
-At `/`, Synth lets a reviewer paste a transcript or upload audio and optionally attach a clinical image artifact to immediately generate:
+At `/`, a reviewer can:
 
-- a parsed transcript view
+- paste transcript text
+- upload an audio file for server transcription
+- optionally attach one clinical evidence image
+
+Synth returns:
+
+- normalized transcript segments
 - a conversation summary
 - a SOAP note preview
-- an extracted evidence summary for the attached image artifact
+- extracted artifact findings when an image is attached
 
 ### Clinician workflow
 
 Authenticated clinicians can:
 
-- sign in
-- start a new visit
-- capture audio or review transcript content
+- sign in with credentials-based auth
+- start a new visit or work from saved visits
 - transcribe recorded audio through AWS Transcribe
-- generate and save documentation
+- generate and save summary plus SOAP documentation
+- attach and persist image evidence artifacts
 - finalize the visit
-- create a patient share link
-- manage appointments, care plan items, and generated reports
+- create appointments, care-plan items, and reports
+- open the patient share flow
+
+### Patient Twin
+
+`/patient-twin` and `/patient-twin/[patientId]` provide a longitudinal view of one patient:
+
+- cross-visit timeline
+- medication history
+- BP trend signals
+- evidence-backed insights
+- follow-up risks and open questions
+- Twin-grounded clinician chat
+
+### Evidence Lab
+
+`/reconciliation` and `/reconciliation/[patientId]` provide the judge-facing arbitration surface:
+
+- persisted reconciliation runs
+- separate transcript, artifact, timeline, and reconciler outputs
+- confidence scoring and conflict ledger
+- suggested actions that can be approved into live chart records
 
 ### Patient follow-up
 
 Patients open `/patient/[shareToken]` and chat with a grounded assistant that answers from:
 
 - transcript content
-- visit summary
-- SOAP notes
-- uploaded image evidence artifacts
+- summary and SOAP notes
+- uploaded evidence artifacts
 - additional notes
 - appointments
-- care plan items
-- blood pressure history across visits
+- care-plan items
+- cross-visit BP history when available
 
-## Demo Flow
+## Best Demo Path
 
-The fastest way to understand the product is:
+The fastest way to understand the project is:
 
-1. Open `/` and paste a transcript to generate a summary and SOAP preview.
-2. Sign in as the demo clinician and start a visit workflow.
-3. Upload audio or transcript content and let Synth generate structured documentation.
-4. Save the visit and create a patient share link.
-5. Open `/patient/[shareToken]` and ask grounded follow-up questions based on the saved visit.
+1. Open `/` and generate a preview from transcript text or audio plus an evidence image.
+2. Sign in as the demo clinician.
+3. Open Sarah Johnson in `Patient Twin`.
+4. Open Sarah Johnson in `Evidence Lab`.
+5. Run a new reconciliation pass and inspect the conflict ledger.
+6. Approve a suggested action into the live chart.
+7. Open the latest SOAP note and the patient follow-up flow.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
   subgraph Browser[Browser]
-    LP[Landing Preview]
-    CL[Clinician Workspace]
-    PT[Patient Share Chat]
+    LANDING[Landing Preview]
+    CLINICIAN[Clinician Workspace]
+    TWIN[Patient Twin]
+    LAB[Evidence Lab]
+    PATIENT[Patient Share Chat]
   end
 
   subgraph App[Next.js 16 App Router]
-    APP_RUNTIME[API Runtime]
     AUTH[NextAuth Credentials]
-    PREVIEW["/api/landing/soap-preview"]
-    TRANSCRIBE["/api/transcribe"]
-    SAVE["/api/transcribe/save"]
-    FINAL["/api/finalize-visit"]
-    CHAT["/api/chat"]
-    ASSIST["/api/assistant"]
-    HEALTH["/api/health"]
+    PREVIEW["POST /api/landing/soap-preview"]
+    TRANSCRIBE["POST /api/transcribe"]
+    SAVE["POST /api/transcribe/save"]
+    FINALIZE["POST /api/finalize-visit"]
+    CHAT["POST /api/chat"]
+    RECON["/api/reconciliation/*"]
+    ASSIST["POST /api/assistant"]
+    HEALTH["GET /api/health"]
   end
 
   subgraph AI[Amazon Bedrock]
-    NOVA[Amazon Nova]
+    NOVA[Amazon Nova 2]
+  end
+
+  subgraph Speech[AWS Speech]
+    TRANSCRIBE_SVC[AWS Transcribe]
   end
 
   subgraph Data[AWS Data Layer]
@@ -126,33 +151,31 @@ flowchart TB
     SECRETS[Secrets Manager]
   end
 
-  subgraph Speech[AWS Speech]
-    TRANSCRIBE_SVC[AWS Transcribe]
-  end
+  LANDING --> PREVIEW
+  CLINICIAN --> TRANSCRIBE
+  CLINICIAN --> SAVE
+  CLINICIAN --> FINALIZE
+  CLINICIAN --> CHAT
+  CLINICIAN --> RECON
+  TWIN --> CHAT
+  LAB --> RECON
+  PATIENT --> CHAT
 
-  LP --> PREVIEW
-  CL --> TRANSCRIBE
-  CL --> SAVE
-  CL --> FINAL
-  CL --> CHAT
-  PT --> CHAT
-
+  AUTH --> PG
   PREVIEW --> NOVA
   SAVE --> NOVA
   CHAT --> NOVA
   ASSIST --> NOVA
+  RECON --> NOVA
   TRANSCRIBE --> TRANSCRIBE_SVC
   TRANSCRIBE --> S3
 
-  APP_RUNTIME --> AUTH
-  APP_RUNTIME --> HEALTH
   SAVE --> PG
-  FINAL --> PG
+  FINALIZE --> PG
   CHAT --> PG
-  AUTH --> PG
-
-  APP_RUNTIME --> SECRETS
-  APP_RUNTIME --> S3
+  RECON --> PG
+  HEALTH --> PG
+  HEALTH --> SECRETS
 ```
 
 ## Stack
@@ -166,20 +189,20 @@ flowchart TB
 - Radix UI
 - NextAuth
 
-### AWS Services
+### AWS services
 
 - Amazon Bedrock
-- Amazon Nova
+- Amazon Nova 2
 - AWS Transcribe
 - Amazon ECS Fargate
-- Amazon RDS / Aurora PostgreSQL
+- Amazon RDS / PostgreSQL
 - Amazon S3
 - AWS Secrets Manager
 - Amazon CloudWatch
 - Amazon ECR
-- ALB
+- Application Load Balancer
 
-### Data
+### Data layer
 
 - Prisma ORM
 - PostgreSQL
@@ -188,42 +211,60 @@ flowchart TB
 
 ### Pages
 
-- `/` - landing page transcript-to-SOAP preview
+- `/` - landing page preview
 - `/login` - clinician sign-in
 - `/clinician` - clinician workspace
-- `/clinician/new-visit` - new visit flow
+- `/clinician/new-visit` - visit entry flow
+- `/clinician/onboarding` - clinician profile setup
 - `/transcribe` - audio and transcript workflow
-- `/visit/[visitId]` - visit detail view
-- `/soap-notes/[visitId]` - generated SOAP note view
+- `/soap-notes` - saved notes index
+- `/soap-notes/[visitId]` - saved SOAP and evidence view
+- `/patient-twin` - Patient Twin index
+- `/patient-twin/[patientId]` - longitudinal patient view
+- `/reconciliation` - Evidence Lab index
+- `/reconciliation/[patientId]` - reconciliation workspace
 - `/patient/[shareToken]` - patient-facing grounded chat
 
 ### APIs
 
-- `POST /api/landing/soap-preview` - generate preview summary and SOAP notes from transcript input
+- `POST /api/landing/soap-preview` - transcript or audio preview with optional image evidence
 - `POST /api/transcribe` - authenticated AWS Transcribe-backed server transcription
-- `POST /api/transcribe/save` - persist visit and generated documentation
-- `POST /api/finalize-visit` - finalize visit and create patient share flow
-- `POST /api/chat` - grounded clinician/patient chat with streaming output
-- `POST /api/assistant` - in-app AI assistant
-- `GET /api/analytics` - analytics payload from database records
-- `GET /api/health` - readiness and configuration check
+- `POST /api/transcribe/save` - persist visit documentation and evidence artifacts
+- `POST /api/finalize-visit` - finalize visit and generate deterministic follow-up artifacts
+- `POST /api/chat` - grounded clinician or patient chat
+- `POST /api/assistant` - in-app navigation and workflow assistant
+- `GET /api/reconciliation/runs` - list reconciliation runs for a patient
+- `POST /api/reconciliation/runs` - create a new reconciliation run
+- `GET /api/reconciliation/runs/[runId]` - fetch one reconciliation run
+- `POST /api/reconciliation/runs/[runId]/actions/[actionId]` - approve or dismiss a suggested action
+- `GET /api/analytics` - analytics payload from saved database records
+- `GET /api/health` - readiness and configuration status
 
 ## Data Model
 
-The Prisma schema centers on:
+The Prisma schema centers on these core entities:
 
 - `User`
 - `Patient`
 - `Visit`
 - `VisitDocumentation`
+- `VisitArtifact`
 - `ShareLink`
 - `Appointment`
 - `CarePlanItem`
 - `GeneratedReport`
+- `ReconciliationRun`
+- `ReconciliationAgentOutput`
+- `ReconciliationAction`
 
-`User` stores the clinician identity and profile fields used by the app, including `passwordHash`.
+Notable design details:
 
-## Environment Variables
+- `VisitDocumentation.transcriptJson` stores normalized transcript segments as JSON text
+- `VisitArtifact` stores extracted image evidence and structured findings
+- `ReconciliationAction` can write into `CarePlanItem` or `Appointment`
+- `sourceActionId` on care-plan and appointment records makes Evidence Lab approvals idempotent
+
+## Configuration
 
 Copy `.env.example` to `.env` and fill the required values.
 
@@ -254,7 +295,8 @@ Notes:
 
 - Bedrock model access must be enabled in the target AWS account and region.
 - AWS Transcribe requires `AWS_REGION` and `S3_BUCKET_AUDIO_UPLOADS`.
-- For deployed AWS environments, prefer IAM roles over static keys.
+- `GET /api/health` reports database, auth, Nova, public URL, and transcription readiness.
+- In deployed AWS environments, prefer IAM roles over static access keys.
 
 ## Local Development
 
@@ -293,12 +335,39 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+If `3000` is already in use:
+
+```bash
+npm run dev -- --port 3001
+```
+
+If you change the port locally, update `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` to match.
+
 ## Demo Account
 
-The seed script creates a demo clinician and walkthrough-ready demo visit.
+The seed script creates a clinician demo account and a seeded longitudinal Sarah Johnson journey.
 
 - Email: `admin@synth.health`
 - Password: `synth2025`
+
+The seeded judge path includes:
+
+- multiple Sarah Johnson visits
+- multimodal evidence artifacts
+- Patient Twin timeline and BP trend
+- Evidence Lab reconciliation runs
+
+## What Is Real vs Fallback
+
+This codebase intentionally favors a working demo path over hard failure in every degraded environment.
+
+- Summary and SOAP generation use Amazon Nova when configured.
+- Image evidence extraction uses Amazon Nova multimodal when configured, and falls back to conservative artifact placeholders otherwise.
+- Audio preview and server transcription require AWS Transcribe plus S3.
+- Patient Twin is built from persisted visit data and deterministic synthesis.
+- Evidence Lab persists separate reconciliation lanes; the final consensus summary can use Nova, while several supporting claims are derived heuristically from saved evidence and timeline data.
+
+For hackathon judging, the intended deployment is an AWS-configured environment with Nova and Transcribe enabled.
 
 ## Verification
 
@@ -306,6 +375,7 @@ The seed script creates a demo clinician and walkthrough-ready demo visit.
 npm run lint
 npx tsc --noEmit
 npm run build
+npm run prisma:seed
 ```
 
 ## AWS Deployment
@@ -315,22 +385,21 @@ Current Terraform scaffolding covers:
 - ECS Fargate
 - ECR
 - ALB
-- VPC, public subnets, private subnets, and NAT
+- VPC, subnets, and NAT
 - RDS PostgreSQL
 - S3
 - CloudWatch Logs
 - Secrets Manager
 - IAM for Bedrock, S3, and Transcribe
-- generated DB password and NextAuth secret for the default deploy path
 
 Fast-start deployment flow:
 
 1. Build and push the container image.
-2. Fill Terraform variables, leaving networking and URLs blank if you want the default AWS-created setup.
+2. Fill Terraform variables.
 3. Apply infrastructure.
 4. Run Prisma migrations against the deployed database.
-5. Override generated secrets only if needed.
-6. Validate `/api/health`, auth, transcription, save flow, and patient chat.
+5. Configure runtime secrets and URLs.
+6. Validate `/api/health`, auth, preview, Patient Twin, Evidence Lab, and patient chat.
 
 Deployment assets:
 
@@ -341,13 +410,10 @@ Deployment assets:
 - `infra/terraform/terraform.tfvars.example`
 - `scripts/deploy/build-and-push.ps1`
 - `scripts/deploy/set-app-secrets.ps1`
-- `docs/AWS_DEPLOYMENT_CHECKLIST.md`
 
 ## Additional Documentation
 
-- `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md` - full technical architecture, runtime flow, AWS service integration, and data-layer details
-- `docs/AWS_DEPLOYMENT_CHECKLIST.md`
-- `docs/HACKATHON_SUBMISSION.md`
+- `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md` - technical architecture, runtime flow, and data model
 - `infra/terraform/README.md`
 
 ## License
