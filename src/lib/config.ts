@@ -3,6 +3,8 @@ function readEnv(name: string) {
   return value ? value : undefined
 }
 
+const DEFAULT_NOVA_MODEL_ID = 'us.amazon.nova-2-lite-v1:0'
+
 export function getAppName() {
   return readEnv('APP_NAME') ?? 'synth'
 }
@@ -12,19 +14,27 @@ export function getAwsRegion() {
 }
 
 export function getNovaTextModelId() {
-  return readEnv('BEDROCK_NOVA_TEXT_MODEL_ID') ?? 'amazon.nova-lite-v1:0'
+  return readEnv('BEDROCK_NOVA_TEXT_MODEL_ID') ?? DEFAULT_NOVA_MODEL_ID
+}
+
+export function getNovaMultimodalModelId() {
+  return (
+    readEnv('BEDROCK_NOVA_MULTIMODAL_MODEL_ID') ??
+    readEnv('BEDROCK_NOVA_TEXT_MODEL_ID') ??
+    DEFAULT_NOVA_MODEL_ID
+  )
 }
 
 export function getNovaFastModelId() {
   return (
     readEnv('BEDROCK_NOVA_FAST_MODEL_ID') ??
     readEnv('BEDROCK_NOVA_TEXT_MODEL_ID') ??
-    'amazon.nova-micro-v1:0'
+    DEFAULT_NOVA_MODEL_ID
   )
 }
 
 export function isNovaConfigured() {
-  return Boolean(getAwsRegion())
+  return Boolean(getAwsRegion() && getNovaTextModelId() && getNovaMultimodalModelId())
 }
 
 export function getNextAuthUrl() {

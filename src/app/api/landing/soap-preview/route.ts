@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { isNovaConfigured } from '@/lib/nova'
+import { isAwsTranscribeConfigured } from '@/lib/config'
 import {
   deriveChiefComplaint,
   generateConversationSummary,
@@ -7,6 +7,11 @@ import {
   type TranscriptSegment,
   type TranscriptSpeaker,
 } from '@/lib/clinical-notes'
+import { transcribeAudioFile } from '@/lib/transcribe'
+import {
+  extractClinicalImageArtifact,
+  formatArtifactsForClinicalPrompt,
+} from '@/lib/visit-artifacts'
 
 function inferSpeakerFromText(text: string, previousSpeaker: TranscriptSpeaker): TranscriptSpeaker {
   const normalized = text.toLowerCase()
@@ -197,33 +202,41 @@ export async function POST(req: NextRequest) {
     const mode = modeValue === 'audio' ? 'audio' : 'transcript'
 
     let transcript: TranscriptSegment[] = []
+    const evidenceImage = formData.get('evidenceImage')
+    const evidenceArtifacts =
+      evidenceImage instanceof File && evidenceImage.size > 0
+        ? [await extractClinicalImageArtifact(evidenceImage)]
+        : []
 
     if (mode === 'audio') {
-      if (!isNovaConfigured()) {
+      if (!isAwsTranscribeConfigured()) {
         return NextResponse.json(
-          { error: 'Audio transcription is unavailable because Amazon Nova is not configured.' },
+          {
+            error:
+              'Audio transcription is unavailable because AWS Transcribe is not configured. Set AWS_REGION and S3_BUCKET_AUDIO_UPLOADS.',
+          },
           { status: 503 }
         )
       }
 
-      return NextResponse.json(
-        {
-          error:
-            'Audio preview transcription is not available in this environment. Paste a transcript or upload a transcript text file instead.',
-        },
-        { status: 503 }
-      )
-    }
+      const audio = formData.get('audio')
+      if (!(audio instanceof File) || audio.size === 0) {
+        return NextResponse.json({ error: 'Attach an audio file to generate a preview.' }, { status: 400 })
+      }
 
-    const rawTranscript = await readTranscriptTextFromForm(formData)
-    if (!rawTranscript) {
-      return NextResponse.json(
-        { error: 'Paste a transcript or attach a transcript file.' },
-        { status: 400 }
-      )
-    }
+      const transcription = await transcribeAudioFile(audio)
+      transcript = transcription.transcript
+    } else {
+      const rawTranscript = await readTranscriptTextFromForm(formData)
+      if (!rawTranscript) {
+        return NextResponse.json(
+          { error: 'Paste a transcript or attach a transcript file.' },
+          { status: 400 }
+        )
+      }
 
-    transcript = parseTranscriptText(rawTranscript)
+      transcript = parseTranscriptText(rawTranscript)
+    }
 
     if (transcript.length === 0) {
       return NextResponse.json(
@@ -232,9 +245,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const additionalEvidenceContext = formatArtifactsForClinicalPrompt(evidenceArtifacts)
     const [summary, soapNotes] = await Promise.all([
-      generateConversationSummary(transcript),
-      generateSoapNotesFromTranscript(transcript),
+      generateConversationSummary(transcript, {
+        additionalEvidenceContext: additionalEvidenceContext || undefined,
+      }),
+      generateSoapNotesFromTranscript(transcript, {
+        additionalEvidenceContext: additionalEvidenceContext || undefined,
+      }),
     ])
 
     return NextResponse.json({
@@ -243,6 +261,7 @@ export async function POST(req: NextRequest) {
       summary,
       soapNotes,
       chiefComplaint: deriveChiefComplaint(transcript),
+      artifacts: evidenceArtifacts,
     })
   } catch (error) {
     console.error('Landing SOAP preview error:', error)

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Mic, Pause, Square, Loader2 } from 'lucide-react'
+import { ImagePlus, Loader2, Mic, Pause, Square } from 'lucide-react'
 
 type RecordingState = 'idle' | 'recording' | 'paused' | 'processing'
 type SpeakerRole = 'clinician' | 'patient'
@@ -25,6 +25,7 @@ interface SaveTranscriptionResponse {
   success: boolean
   visitId: string
   patientName: string
+  artifactCount?: number
 }
 
 interface LiveEntity {
@@ -194,9 +195,11 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [patientName, setPatientName] = useState('')
+  const [evidenceImage, setEvidenceImage] = useState<File | null>(null)
   const [saveError, setSaveError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [savedVisitId, setSavedVisitId] = useState('')
+  const [savedArtifactCount, setSavedArtifactCount] = useState(0)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -205,6 +208,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const recordingStateRef = useRef<RecordingState>('idle')
   const fallbackTranscriptRef = useRef('')
+  const evidenceImageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     recordingStateRef.current = recordingState
@@ -332,6 +336,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
     setErrorMessage('')
     setSaveError('')
     setSavedVisitId('')
+    setSavedArtifactCount(0)
     setSegments([])
     setLiveTranscript('')
     setInterimTranscript('')
@@ -453,13 +458,16 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
     setIsSaving(true)
 
     try {
+      const formData = new FormData()
+      formData.append('patientName', trimmedName)
+      formData.append('transcript', JSON.stringify(segments))
+      if (evidenceImage) {
+        formData.append('evidenceImage', evidenceImage)
+      }
+
       const response = await fetch('/api/transcribe/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientName: trimmedName,
-          transcript: segments,
-        }),
+        body: formData,
       })
 
       const payload = (await response.json()) as SaveTranscriptionResponse & { error?: string }
@@ -468,6 +476,7 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
       }
 
       setSavedVisitId(payload.visitId)
+      setSavedArtifactCount(payload.artifactCount ?? 0)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to save transcription'
       setSaveError(message)
@@ -729,7 +738,8 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
           Save Transcription
         </p>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Save the parsed transcript to generate the patient summary and SOAP notes.
+          Save the parsed transcript to generate the patient summary and SOAP notes. You can also
+          attach one supporting clinical image for multimodal evidence.
         </p>
 
         <div className="mt-5 flex flex-col gap-3.5 md:flex-row md:items-center">
@@ -749,10 +759,45 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
           </Button>
         </div>
 
+        <div className="mt-4 rounded-2xl border border-[#eadfcd] bg-white/75 px-4 py-3.5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Optional image evidence</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Add a home BP log, medication bottle, lab printout, or discharge sheet.
+              </p>
+              {evidenceImage && (
+                <p className="mt-2 text-xs font-medium text-cyan-700">
+                  Attached: {evidenceImage.name}
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => evidenceImageInputRef.current?.click()}
+              className="rounded-full border border-[#eadfcd] bg-white/90 text-slate-700 hover:bg-white"
+            >
+              <ImagePlus size={16} className="mr-2" />
+              Attach Image
+            </Button>
+          </div>
+
+          <input
+            ref={evidenceImageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => setEvidenceImage(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
         {saveError && <p className="mt-4 text-sm text-red-700">{saveError}</p>}
         {savedVisitId && (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3.5 text-sm leading-6 text-emerald-800">
-            Saved successfully.{' '}
+            Saved successfully
+            {savedArtifactCount > 0 ? ` with ${savedArtifactCount} evidence artifact.` : '.'}{' '}
             <Link href={`/soap-notes/${savedVisitId}`} className="font-semibold underline">
               Open this patient in SOAP Notes
             </Link>

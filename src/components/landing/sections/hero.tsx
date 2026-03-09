@@ -4,6 +4,7 @@ import React, { FormEvent, useRef, useState } from "react";
 import {
   ArrowRight,
   FileText,
+  ImagePlus,
   Loader2,
   Mic,
   Paperclip,
@@ -31,6 +32,15 @@ interface LandingSoapPreviewResponse {
   summary: string;
   soapNotes: string;
   chiefComplaint?: string;
+  artifacts?: Array<{
+    kind: string;
+    label: string;
+    summary: string;
+    extractedText: string;
+    findings: string[];
+    evidenceSnippets: string[];
+    vitals: Array<{ type: string; value: string; label?: string }>;
+  }>;
   error?: string;
 }
 
@@ -48,6 +58,7 @@ const HeroSection: React.FC = () => {
   const [transcriptText, setTranscriptText] = useState("");
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [evidenceImage, setEvidenceImage] = useState<File | null>(null);
   const [isTranscriptInputExpanded, setIsTranscriptInputExpanded] =
     useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,6 +67,7 @@ const HeroSection: React.FC = () => {
 
   const transcriptFileInputRef = useRef<HTMLInputElement | null>(null);
   const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+  const evidenceImageInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasTranscriptInput =
     transcriptText.trim().length > 0 || transcriptFile !== null;
@@ -87,6 +99,10 @@ const HeroSection: React.FC = () => {
         }
       } else if (audioFile) {
         formData.append("audio", audioFile);
+      }
+
+      if (evidenceImage) {
+        formData.append("evidenceImage", evidenceImage);
       }
 
       const response = await fetch("/api/landing/soap-preview", {
@@ -150,9 +166,9 @@ const HeroSection: React.FC = () => {
           </h1>
 
           <p className="max-w-2xl mx-auto text-[16px] leading-[1.6] text-slate-100/90 text-balance">
-            Attach a transcript or audio recording and let Synth parse the
-            visit, extract clinical signals, and generate a SOAP note preview
-            directly on the landing page.
+            Attach a transcript or audio recording, add optional clinical image
+            evidence like a BP log or medication bottle, and let Synth generate
+            a grounded SOAP preview directly on the landing page.
           </p>
         </div>
 
@@ -347,9 +363,46 @@ const HeroSection: React.FC = () => {
               </div>
             )}
 
+            <div className="rounded-[18px] border border-slate-200 bg-white/70 p-3 text-left">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Optional clinical image evidence
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Add one image such as a home BP log, medication bottle,
+                    printed lab, or discharge instruction sheet.
+                  </p>
+                  {evidenceImage && (
+                    <p className="mt-2 text-xs font-medium text-sky-700">
+                      Attached: {evidenceImage.name}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => evidenceImageInputRef.current?.click()}
+                  className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <ImagePlus className="size-4" />
+                  Attach Image
+                </button>
+              </div>
+
+              <input
+                ref={evidenceImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => setEvidenceImage(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
             <p className="px-1 pb-1 text-left text-xs text-slate-500">
-              Landing page demo generates a preview only. Sign in for saved visits,
-              patient sharing, and full clinician workflows.
+              Landing page demo generates a preview only. Sign in for saved
+              visits, multimodal evidence storage, patient sharing, and full
+              clinician workflows.
             </p>
           </form>
         </div>
@@ -372,6 +425,71 @@ const HeroSection: React.FC = () => {
                     <MarkdownRenderer content={result.summary} />
                   </div>
                 </div>
+
+                {result.artifacts && result.artifacts.length > 0 && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Clinical Evidence
+                      </p>
+                      <span className="text-xs font-medium text-slate-500">
+                        {result.artifacts.length} artifact
+                        {result.artifacts.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-3">
+                      {result.artifacts.map((artifact, index) => (
+                        <div
+                          key={`${artifact.label}-${index}`}
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {artifact.label}
+                            </p>
+                            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700">
+                              {artifact.kind.replace("_", " ")}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">
+                            {artifact.summary}
+                          </p>
+                          {artifact.findings.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {artifact.findings.map((finding) => (
+                                <span
+                                  key={finding}
+                                  className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800"
+                                >
+                                  {finding}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {artifact.vitals.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {artifact.vitals.map((vital) => (
+                                <span
+                                  key={`${vital.type}-${vital.value}-${vital.label ?? ""}`}
+                                  className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800"
+                                >
+                                  {vital.type}: {vital.value}
+                                  {vital.label ? ` (${vital.label})` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {artifact.extractedText && (
+                            <p className="mt-3 text-xs leading-5 text-slate-500">
+                              Extracted text: {artifact.extractedText}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -434,9 +552,9 @@ const HeroSection: React.FC = () => {
 
         <div className="relative z-10 mt-1 flex items-center gap-2 text-xs font-medium text-white/80">
           <span className="rounded-full bg-white/15 px-3 py-1">
-            Amazon Nova on AWS
+            Amazon Nova 2 on AWS
           </span>
-          <span>Transcript preview, SOAP notes, and grounded patient chat.</span>
+          <span>Transcript, audio, image evidence, SOAP notes, and grounded patient chat.</span>
         </div>
       </div>
     </section>

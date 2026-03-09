@@ -9,6 +9,10 @@ export interface TranscriptSegment {
   text: string
 }
 
+interface ClinicalGenerationOptions {
+  additionalEvidenceContext?: string
+}
+
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
@@ -32,23 +36,36 @@ export function deriveChiefComplaint(segments: TranscriptSegment[]): string {
   return cleanText(patientSegment.text).slice(0, 140) || 'Follow-up consultation'
 }
 
-export async function generateConversationSummary(segments: TranscriptSegment[]): Promise<string> {
+function renderEvidenceSection(options?: ClinicalGenerationOptions) {
+  const evidenceContext = options?.additionalEvidenceContext?.trim()
+  return evidenceContext ? `\n\nAdditional clinical evidence:\n${evidenceContext}\n` : ''
+}
+
+export async function generateConversationSummary(
+  segments: TranscriptSegment[],
+  options?: ClinicalGenerationOptions
+): Promise<string> {
   if (segments.length === 0) return 'No transcript segments available.'
 
   try {
     const transcript = formatTranscriptForPrompt(segments)
     return await generateNovaText({
-      prompt: `You are a medical documentation assistant. Summarize this doctor-patient conversation in 3-5 concise bullet points. Focus on: chief complaint, key findings, decisions made, and next steps.\n\n${transcript}\n\nReturn only the summary, no preamble.`,
+      prompt: `You are a medical documentation assistant. Summarize this doctor-patient conversation in 3-5 concise bullet points. Focus on: chief complaint, key findings, decisions made, and next steps.${renderEvidenceSection(
+        options
+      )}\nTranscript:\n${transcript}\n\nReturn only the summary, no preamble.`,
       maxTokens: 600,
       temperature: 0.2,
     })
   } catch (e) {
     console.warn('Nova summary generation failed, using fallback:', e)
-    return generateFallbackSummary(segments)
+    return generateFallbackSummary(segments, options)
   }
 }
 
-export async function generateSoapNotesFromTranscript(segments: TranscriptSegment[]): Promise<string> {
+export async function generateSoapNotesFromTranscript(
+  segments: TranscriptSegment[],
+  options?: ClinicalGenerationOptions
+): Promise<string> {
   if (segments.length === 0) {
     return '# SOAP Note\n\nNo transcript data available.'
   }
@@ -58,6 +75,7 @@ export async function generateSoapNotesFromTranscript(segments: TranscriptSegmen
     return await generateNovaText({
       prompt: `You are a medical documentation assistant. Generate a SOAP note from this doctor-patient conversation transcript.
 
+${renderEvidenceSection(options)}Transcript:
 ${transcript}
 
 Format the output exactly as:
@@ -82,11 +100,14 @@ Be thorough but concise. Extract real information from the transcript. Mark anyt
     })
   } catch (e) {
     console.warn('Nova SOAP generation failed, using fallback:', e)
-    return generateFallbackSoap(segments)
+    return generateFallbackSoap(segments, options)
   }
 }
 
-function generateFallbackSummary(segments: TranscriptSegment[]): string {
+function generateFallbackSummary(
+  segments: TranscriptSegment[],
+  options?: ClinicalGenerationOptions
+): string {
   const patientStatements = segments
     .filter((segment) => segment.speaker === 'patient')
     .slice(0, 4)
@@ -109,10 +130,17 @@ function generateFallbackSummary(segments: TranscriptSegment[]): string {
     clinicianStatements.forEach((line) => summaryLines.push(`- ${line}`))
   }
 
+  if (options?.additionalEvidenceContext?.trim()) {
+    summaryLines.push('', 'Additional evidence:', options.additionalEvidenceContext.trim())
+  }
+
   return summaryLines.join('\n')
 }
 
-function generateFallbackSoap(segments: TranscriptSegment[]): string {
+function generateFallbackSoap(
+  segments: TranscriptSegment[],
+  options?: ClinicalGenerationOptions
+): string {
   const subjective = segments
     .filter((segment) => segment.speaker === 'patient')
     .slice(0, 6)
@@ -133,6 +161,7 @@ ${subjective || 'Patient-reported symptoms and concerns to be completed.'}
 
 ## O (Objective)
 ${objectivePoints.length > 0 ? objectivePoints.map((line) => `- ${line}`).join('\n') : '- Objective findings to be completed.'}
+${options?.additionalEvidenceContext?.trim() ? `\n- Additional evidence reviewed: ${options.additionalEvidenceContext.trim()}` : ''}
 
 ## A (Assessment)
 - Primary concern: ${assessmentSeed}

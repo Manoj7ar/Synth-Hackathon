@@ -4,6 +4,11 @@ import { authOptions } from '@/lib/auth'
 import { generateNovaText } from '@/lib/nova'
 import { prisma } from '@/lib/prisma'
 import type { TranscriptSegment } from '@/lib/clinical-notes'
+import {
+  buildArtifactEvidenceExcerpt,
+  parseStoredArtifact,
+  type NormalizedVisitArtifact,
+} from '@/lib/visit-artifacts'
 
 type ChatAccessRole = 'clinician' | 'patient'
 
@@ -22,6 +27,7 @@ interface VisitContext {
   summary: string
   soapNotes: string
   additionalNotes: string
+  artifacts: NormalizedVisitArtifact[]
   appointments: Array<{ title: string; scheduledFor: Date; notes: string }>
   planItems: Array<{ title: string; details: string; dueAt: Date | null; status: string }>
   bpHistory: BloodPressurePoint[]
@@ -33,7 +39,7 @@ interface BloodPressurePoint {
   label: string
   systolic: number
   diastolic: number
-  source: 'Summary' | 'SOAP' | 'Transcript'
+  source: string
   timestamp?: string
   excerpt: string
 }
@@ -221,6 +227,7 @@ async function generateNovaResponse({
     result: {
       transcript: context.transcriptText ? 'loaded' : 'none',
       hasSummary: Boolean(context.summary),
+      artifacts: context.artifacts.length,
       appointments: context.appointments.length,
       planItems: context.planItems.length,
       bpPoints: context.bpHistory.length,
@@ -271,22 +278,61 @@ async function generateNovaResponse({
           )
           .join('\n')
 
+  const artifactContext =
+    context.artifacts.length === 0
+      ? 'No uploaded clinical evidence artifacts.'
+      : context.artifacts
+          .map((artifact, index) => {
+            const lines = [
+              `${index + 1}. ${artifact.label} (${artifact.kind})`,
+              `Summary: ${artifact.summary}`,
+            ]
+
+            if (artifact.extractedText) {
+              lines.push(`Extracted text: ${artifact.extractedText}`)
+            }
+            if (artifact.findings.length > 0) {
+              lines.push(`Findings: ${artifact.findings.join(' | ')}`)
+            }
+            if (artifact.vitals.length > 0) {
+              lines.push(
+                `Vitals: ${artifact.vitals
+                  .map((vital) => `${vital.type} ${vital.value}${vital.label ? ` (${vital.label})` : ''}`)
+                  .join(' | ')}`
+              )
+            }
+            if (artifact.medications.length > 0) {
+              lines.push(
+                `Medications: ${artifact.medications
+                  .map((medication) =>
+                    [medication.name, medication.dosage, medication.frequency].filter(Boolean).join(' ')
+                  )
+                  .join(' | ')}`
+              )
+            }
+
+            return lines.join('\n')
+          })
+          .join('\n\n')
+
   const systemPrompt =
     role === 'clinician'
       ? `You are Synth, an AI clinical assistant for clinicians.
 Answer using ONLY the provided visit context.
 If uncertain, say so directly.
-Keep responses concise and clinically grounded.`
+Keep responses concise and clinically grounded.
+If you use uploaded artifact evidence, cite it with [Artifact: label].`
       : `You are Synth, a patient-facing AI assistant.
-You are grounded in this patient's visit transcript, SOAP notes, summary, appointments, care plan, and blood pressure history.
+You are grounded in this patient's visit transcript, SOAP notes, summary, uploaded evidence artifacts, appointments, care plan, and blood pressure history.
 Rules:
 - Use simple language.
 - If the question asks about next appointment or care tasks, answer from those sections directly.
+- If the question asks about an uploaded photo, bottle, lab, or blood pressure log, answer from CLINICAL EVIDENCE first.
 - For food/diet/lifestyle questions, first check the visit context. If not explicitly documented, provide conservative general guidance and suggest confirming with the doctor.
 - If asked for research or studies, provide high-level general medical guidance and clearly state it is educational, not a diagnosis.
 - Do not invent prescriptions, diagnoses, or restrictions.
 - Use BLOOD PRESSURE HISTORY if asked to compare or trend BP.
-- End your answer with a single line called Sources using short tags like [Transcript 02:10], [SOAP], [Summary], [Appointment], [Plan].`
+- End your answer with a single line called Sources using short tags like [Transcript 02:10], [SOAP], [Summary], [Appointment], [Plan], or [Artifact: Home blood pressure log photo].`
 
   const prompt = `${systemPrompt}
 
@@ -300,6 +346,9 @@ ${context.soapNotes || 'No SOAP notes available.'}
 
 --- ADDITIONAL NOTES ---
 ${context.additionalNotes || 'No additional notes.'}
+
+--- CLINICAL EVIDENCE ---
+${artifactContext}
 
 --- APPOINTMENTS ---
 ${appointmentContext}
@@ -352,6 +401,9 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
     include: {
       patient: true,
       documentation: true,
+      artifacts: {
+        orderBy: { createdAt: 'asc' },
+      },
       appointments: {
         orderBy: { scheduledFor: 'asc' },
         take: 20,
@@ -372,6 +424,17 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
           soapNotes: string
           additionalNotes: string | null
         } | null
+        artifacts: Array<{
+          id: string
+          kind: string
+          label: string
+          mimeType: string
+          sourceName: string | null
+          extractedText: string | null
+          summary: string
+          structuredJson: string | null
+          createdAt: Date
+        }>
         appointments: Array<{
           title: string
           scheduledFor: Date
@@ -389,10 +452,16 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
   if (!visit) return null
 
   const transcriptText = toTranscriptText(visit.documentation?.transcriptJson ?? null)
+  const artifacts = visit.artifacts.map((artifact) => parseStoredArtifact(artifact))
 
   const patientVisits = await prisma.visit.findMany({
     where: { patientId: visit.patientId },
-    include: { documentation: true },
+    include: {
+      documentation: true,
+      artifacts: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
     orderBy: { startedAt: 'desc' },
     take: 10,
   })
@@ -405,6 +474,17 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
       soapNotes: string
       transcriptJson: string
     } | null
+    artifacts: Array<{
+      id: string
+      kind: string
+      label: string
+      mimeType: string
+      sourceName: string | null
+      extractedText: string | null
+      summary: string
+      structuredJson: string | null
+      createdAt: Date
+    }>
   }>)
     .map((patientVisit) => extractVisitBloodPressure(patientVisit))
     .filter((point): point is BloodPressurePoint => point !== null)
@@ -417,6 +497,7 @@ async function loadVisitContext(visitId: string): Promise<VisitContext | null> {
     summary: visit.documentation?.summary ?? '',
     soapNotes: visit.documentation?.soapNotes ?? '',
     additionalNotes: visit.documentation?.additionalNotes ?? '',
+    artifacts,
     appointments: visit.appointments.map((appointment) => ({
       title: appointment.title,
       scheduledFor: appointment.scheduledFor,
@@ -473,17 +554,35 @@ function extractVisitBloodPressure(patientVisit: {
     soapNotes: string
     transcriptJson: string
   } | null
+  artifacts: Array<{
+    id: string
+    kind: string
+    label: string
+    mimeType: string
+    sourceName: string | null
+    extractedText: string | null
+    summary: string
+    structuredJson: string | null
+    createdAt: Date
+  }>
 }): BloodPressurePoint | null {
-  if (!patientVisit.documentation) {
+  if (!patientVisit.documentation && patientVisit.artifacts.length === 0) {
     return null
   }
 
-  const summaryReading = extractReadingFromText(patientVisit.documentation.summary, 'Summary')
-  const soapReading = extractReadingFromText(patientVisit.documentation.soapNotes, 'SOAP')
-  const transcriptText = toTranscriptText(patientVisit.documentation.transcriptJson)
+  const artifactReading = extractReadingFromArtifacts(patientVisit.artifacts)
+  const summaryReading = patientVisit.documentation
+    ? extractReadingFromText(patientVisit.documentation.summary, 'Summary')
+    : null
+  const soapReading = patientVisit.documentation
+    ? extractReadingFromText(patientVisit.documentation.soapNotes, 'SOAP')
+    : null
+  const transcriptText = patientVisit.documentation
+    ? toTranscriptText(patientVisit.documentation.transcriptJson)
+    : ''
   const transcriptReading = extractReadingFromTranscript(transcriptText)
 
-  const selected = soapReading ?? summaryReading ?? transcriptReading
+  const selected = artifactReading ?? soapReading ?? summaryReading ?? transcriptReading
   if (!selected) {
     return null
   }
@@ -495,9 +594,61 @@ function extractVisitBloodPressure(patientVisit: {
     systolic: selected.systolic,
     diastolic: selected.diastolic,
     source: selected.source,
-    timestamp: 'timestamp' in selected ? selected.timestamp : undefined,
+    timestamp:
+      typeof (selected as { timestamp?: unknown }).timestamp === 'string'
+        ? (selected as { timestamp?: string }).timestamp
+        : undefined,
     excerpt: selected.excerpt,
   }
+}
+
+function extractReadingFromArtifacts(
+  artifacts: Array<{
+    id: string
+    kind: string
+    label: string
+    mimeType: string
+    sourceName: string | null
+    extractedText: string | null
+    summary: string
+    structuredJson: string | null
+    createdAt: Date
+  }>
+):
+  | {
+      systolic: number
+      diastolic: number
+      source: string
+      excerpt: string
+    }
+  | null {
+  const parsedArtifacts = artifacts.map((artifact) => parseStoredArtifact(artifact))
+
+  for (let index = parsedArtifacts.length - 1; index >= 0; index -= 1) {
+    const artifact = parsedArtifacts[index]
+    const bloodPressureVital = artifact.vitals
+      .slice()
+      .reverse()
+      .find((vital) => /blood pressure|\bbp\b/i.test(vital.type) && isValidReadingValue(vital.value))
+
+    if (!bloodPressureVital) {
+      continue
+    }
+
+    const [systolic, diastolic] = bloodPressureVital.value.split(/[\/]/).map((value) => Number(value.trim()))
+    if (!isValidBloodPressure(systolic, diastolic)) {
+      continue
+    }
+
+    return {
+      systolic,
+      diastolic,
+      source: `Artifact: ${artifact.label}`,
+      excerpt: `${bloodPressureVital.label ? `${bloodPressureVital.label}: ` : ''}${buildArtifactEvidenceExcerpt(artifact)}`,
+    }
+  }
+
+  return null
 }
 
 function extractReadingFromText(
@@ -595,6 +746,10 @@ function getValidReading(text: string, regex: RegExp, requireKeywordNear = false
   return null
 }
 
+function isValidReadingValue(value: string) {
+  return /^\d{2,3}\s*\/\s*\d{2,3}$/.test(value.trim())
+}
+
 function isValidBloodPressure(systolic: number, diastolic: number) {
   return systolic >= 70 && systolic <= 260 && diastolic >= 40 && diastolic <= 160
 }
@@ -611,7 +766,7 @@ function buildBpVisualizationIfNeeded(
   return {
     type: 'bp_trend',
     title: 'Blood pressure across recent visits',
-    description: 'Values extracted from your visit notes and transcript history.',
+    description: 'Values extracted from your visit notes, transcript history, and uploaded evidence.',
     data: points.map((point) => ({
       label: point.label,
       visitDate: point.visitDate.toISOString(),
@@ -682,11 +837,32 @@ function buildCitationsFromResponse(responseText: string, context: VisitContext)
     transcriptMatch = transcriptRegex.exec(responseText)
   }
 
+  const artifactRegex = /\[Artifact:\s*([^\]]+)\]/gi
+  let artifactMatch = artifactRegex.exec(responseText)
+  while (artifactMatch) {
+    const label = artifactMatch[1].trim()
+    const key = `artifact-${label.toLowerCase()}`
+    if (!seen.has(key)) {
+      const excerpt = getArtifactExcerpt(label, context)
+      if (excerpt) {
+        citations.push({ source: `Artifact: ${label}`, excerpt })
+        seen.add(key)
+      }
+    }
+    artifactMatch = artifactRegex.exec(responseText)
+  }
+
   if (citations.length > 0) {
     return citations.slice(0, 6)
   }
 
   const fallback: MessageCitation[] = []
+  if (context.artifacts.length > 0) {
+    fallback.push({
+      source: `Artifact: ${context.artifacts[0].label}`,
+      excerpt: getArtifactExcerpt(context.artifacts[0].label, context),
+    })
+  }
   if (context.summary) {
     fallback.push({ source: 'Summary', excerpt: compactWhitespace(context.summary).slice(0, 220) })
   }
@@ -751,6 +927,56 @@ function getSourceExcerpt(source: string, context: VisitContext): string {
     return `${first.title}${first.details ? ` - ${compactWhitespace(first.details)}` : ''}`.slice(0, 220)
   }
   return ''
+}
+
+function getArtifactExcerpt(label: string, context: VisitContext): string {
+  const artifact = context.artifacts.find((candidate) => candidate.label.toLowerCase() === label.toLowerCase())
+  if (!artifact) {
+    return ''
+  }
+
+  return compactWhitespace(buildArtifactEvidenceExcerpt(artifact)).slice(0, 220)
+}
+
+function selectRelevantArtifact(question: string, artifacts: NormalizedVisitArtifact[]) {
+  const normalizedQuestion = question.toLowerCase()
+  const queryTokens = normalizedQuestion.split(/[^a-z0-9]+/).filter((token) => token.length >= 3)
+
+  let bestArtifact: NormalizedVisitArtifact | null = null
+  let bestScore = -1
+
+  for (const artifact of artifacts) {
+    const haystack = [
+      artifact.label,
+      artifact.summary,
+      artifact.extractedText,
+      artifact.findings.join(' '),
+      artifact.evidenceSnippets.join(' '),
+    ]
+      .join(' ')
+      .toLowerCase()
+
+    let score = 0
+    for (const token of queryTokens) {
+      if (haystack.includes(token)) {
+        score += token.length > 5 ? 2 : 1
+      }
+    }
+
+    if (normalizedQuestion.includes('bottle') && haystack.includes('bottle')) score += 5
+    if (normalizedQuestion.includes('log') && haystack.includes('log')) score += 5
+    if (normalizedQuestion.includes('lab') && haystack.includes('lab')) score += 5
+    if (normalizedQuestion.includes('blood pressure') && /blood pressure|\bbp\b/.test(haystack)) score += 4
+    if (normalizedQuestion.includes('medication') && /medication|lisinopril/.test(haystack)) score += 4
+    if (normalizedQuestion.includes('refill') && /refill/.test(haystack)) score += 3
+
+    if (score > bestScore) {
+      bestScore = score
+      bestArtifact = artifact
+    }
+  }
+
+  return bestArtifact
 }
 
 function getTranscriptExcerpt(transcriptText: string, timestamp: string): string {
@@ -837,6 +1063,21 @@ function buildDeterministicFallback(question: string, context: VisitContext): st
       .map((item, index) => `${index + 1}. ${item.title}${item.details ? ` - ${compactWhitespace(item.details)}` : ''}`)
       .join(' ')
     return `Your pending care tasks are: ${listed} [Plan]`
+  }
+
+  if (
+    lower.includes('image') ||
+    lower.includes('photo') ||
+    lower.includes('bottle') ||
+    lower.includes('lab') ||
+    lower.includes('log')
+  ) {
+    const artifact = selectRelevantArtifact(question, context.artifacts)
+    if (!artifact) {
+      return 'I do not see uploaded clinical image evidence in this visit yet. [Summary]'
+    }
+
+    return `${artifact.summary} Sources: [Artifact: ${artifact.label}]`
   }
 
   return 'I am temporarily rate-limited by the AI service right now, but I can still answer using your visit records if you ask about appointments, care tasks, or blood pressure trends. [Summary] [SOAP]'

@@ -1,5 +1,11 @@
 ﻿import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
-import { getAwsRegion, getNovaFastModelId, getNovaTextModelId, isNovaConfigured } from '@/lib/config'
+import {
+  getAwsRegion,
+  getNovaFastModelId,
+  getNovaMultimodalModelId,
+  getNovaTextModelId,
+  isNovaConfigured,
+} from '@/lib/config'
 
 type NovaMessage = {
   role: 'user' | 'assistant'
@@ -16,6 +22,15 @@ type GenerateNovaTextArgs = {
 
 type GenerateNovaTextFromMessagesArgs = {
   messages: NovaMessage[]
+  systemPrompt?: string
+  modelId?: string
+  maxTokens?: number
+  temperature?: number
+}
+
+type GenerateNovaMultimodalTextArgs = {
+  prompt: string
+  imageFiles: File[]
   systemPrompt?: string
   modelId?: string
   maxTokens?: number
@@ -96,6 +111,45 @@ export async function generateNovaTextFromMessages(args: GenerateNovaTextFromMes
     ...args,
     modelId: args.modelId ?? getNovaTextModelId(),
   })
+}
+
+function imageFormatForFile(file: File): 'jpeg' | 'png' | 'gif' | 'webp' {
+  if (file.type === 'image/png') return 'png'
+  if (file.type === 'image/gif') return 'gif'
+  if (file.type === 'image/webp') return 'webp'
+  return 'jpeg'
+}
+
+export async function generateNovaMultimodalText(args: GenerateNovaMultimodalTextArgs) {
+  const client = getBedrockClient()
+  const imageContentBlocks = await Promise.all(
+    args.imageFiles.map(async (file) => ({
+      image: {
+        format: imageFormatForFile(file),
+        source: {
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        },
+      },
+    }))
+  )
+
+  const command = new ConverseCommand({
+    modelId: args.modelId ?? getNovaMultimodalModelId(),
+    system: args.systemPrompt ? [{ text: args.systemPrompt }] : undefined,
+    messages: [
+      {
+        role: 'user',
+        content: [{ text: args.prompt }, ...imageContentBlocks],
+      },
+    ] as never,
+    inferenceConfig: {
+      maxTokens: args.maxTokens ?? 1200,
+      temperature: args.temperature ?? 0.2,
+    },
+  } as never)
+
+  const response = await client.send(command)
+  return normalizeTextFromConverseResponse(response)
 }
 
 export { isNovaConfigured }

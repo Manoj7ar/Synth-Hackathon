@@ -14,6 +14,7 @@ import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloati
 import { PatientAgentShareButton } from '@/components/soap-notes/PatientAgentShareButton'
 import { requireClinicianPage } from '@/lib/server/clinician-auth'
 import { generateShareToken } from '@/lib/share-token'
+import { parseStoredArtifact } from '@/lib/visit-artifacts'
 
 function safeParseTranscript(raw: string): TranscriptSegment[] {
   try {
@@ -45,6 +46,9 @@ export default async function SoapNotesDetailPage({
     include: {
       patient: true,
       documentation: true,
+      artifacts: {
+        orderBy: { createdAt: 'asc' },
+      },
       shareLinks: {
         where: { revokedAt: null },
         take: 1,
@@ -69,6 +73,7 @@ export default async function SoapNotesDetailPage({
   }
 
   const transcript = safeParseTranscript(visit.documentation.transcriptJson)
+  const artifacts = visit.artifacts.map((artifact) => parseStoredArtifact(artifact))
   const clinicianTurns = transcript.filter((segment) => segment.speaker === 'clinician').length
   const patientTurns = transcript.filter((segment) => segment.speaker === 'patient').length
   const transcriptDurationMs =
@@ -172,6 +177,85 @@ export default async function SoapNotesDetailPage({
               </div>
             </div>
           </div>
+
+          {artifacts.length > 0 && (
+            <div className="rounded-2xl border border-[#eadfcd] bg-white/80 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Clinical Evidence
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Uploaded artifact summaries that were folded into the saved visit note.
+                  </p>
+                </div>
+                <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                  {artifacts.length} artifact{artifacts.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                {artifacts.map((artifact) => (
+                  <div
+                    key={artifact.id ?? artifact.label}
+                    className="rounded-2xl border border-[#eadfcd] bg-[#fffaf1] p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{artifact.label}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+                          {artifact.kind.replace('_', ' ')}
+                        </p>
+                      </div>
+                      {artifact.createdAt && (
+                        <span className="text-xs text-slate-500">
+                          {artifact.createdAt.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{artifact.summary}</p>
+
+                    {artifact.findings.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {artifact.findings.map((finding) => (
+                          <span
+                            key={finding}
+                            className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800"
+                          >
+                            {finding}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {artifact.vitals.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {artifact.vitals.map((vital) => (
+                          <span
+                            key={`${artifact.label}-${vital.type}-${vital.value}-${vital.label ?? ''}`}
+                            className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800"
+                          >
+                            {vital.type}: {vital.value}
+                            {vital.label ? ` (${vital.label})` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {artifact.extractedText && (
+                      <p className="mt-3 text-xs leading-5 text-slate-500">
+                        Extracted text: {artifact.extractedText}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <TranscriptPanel transcript={transcript} />
 

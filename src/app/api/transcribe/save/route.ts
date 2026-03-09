@@ -9,10 +9,21 @@ import {
   generateSoapNotesFromTranscript,
   type TranscriptSegment,
 } from '@/lib/clinical-notes'
+import {
+  extractClinicalImageArtifact,
+  formatArtifactsForClinicalPrompt,
+  type NormalizedVisitArtifact,
+} from '@/lib/visit-artifacts'
 
 interface SaveTranscribePayload {
   patientName?: string
   transcript?: TranscriptSegment[]
+}
+
+interface ParsedSaveRequest {
+  patientName?: string
+  transcript: TranscriptSegment[]
+  evidenceArtifacts: NormalizedVisitArtifact[]
 }
 
 function validateTranscript(input: unknown): TranscriptSegment[] {
@@ -46,6 +57,44 @@ function validateTranscript(input: unknown): TranscriptSegment[] {
     .filter((segment): segment is TranscriptSegment => Boolean(segment?.text))
 }
 
+async function parseSaveRequest(req: NextRequest): Promise<ParsedSaveRequest> {
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await req.formData()
+    const patientNameValue = formData.get('patientName')
+    const transcriptValue = formData.get('transcript')
+    const evidenceImageValue = formData.get('evidenceImage')
+
+    let transcript: TranscriptSegment[] = []
+    if (typeof transcriptValue === 'string' && transcriptValue.trim()) {
+      try {
+        transcript = validateTranscript(JSON.parse(transcriptValue))
+      } catch {
+        transcript = []
+      }
+    }
+
+    const evidenceArtifacts: NormalizedVisitArtifact[] = []
+    if (evidenceImageValue instanceof File && evidenceImageValue.size > 0) {
+      evidenceArtifacts.push(await extractClinicalImageArtifact(evidenceImageValue))
+    }
+
+    return {
+      patientName: typeof patientNameValue === 'string' ? patientNameValue.trim() : undefined,
+      transcript,
+      evidenceArtifacts,
+    }
+  }
+
+  const payload = (await req.json()) as SaveTranscribePayload
+  return {
+    patientName: payload.patientName?.trim(),
+    transcript: validateTranscript(payload.transcript),
+    evidenceArtifacts: [],
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -53,9 +102,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const payload = (await req.json()) as SaveTranscribePayload
-    const patientName = payload.patientName?.trim()
-    const transcript = validateTranscript(payload.transcript)
+    const { patientName, transcript, evidenceArtifacts } = await parseSaveRequest(req)
 
     if (!patientName) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -65,9 +112,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Transcript is empty' }, { status: 400 })
     }
 
+    const additionalEvidenceContext = formatArtifactsForClinicalPrompt(evidenceArtifacts)
     const [summary, soapNotes] = await Promise.all([
-      generateConversationSummary(transcript),
-      generateSoapNotesFromTranscript(transcript),
+      generateConversationSummary(transcript, {
+        additionalEvidenceContext: additionalEvidenceContext || undefined,
+      }),
+      generateSoapNotesFromTranscript(transcript, {
+        additionalEvidenceContext: additionalEvidenceContext || undefined,
+      }),
     ])
     const chiefComplaint = deriveChiefComplaint(transcript)
 
@@ -98,6 +150,35 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      if (evidenceArtifacts.length > 0) {
+        await Promise.all(
+          evidenceArtifacts.map((artifact) =>
+            tx.visitArtifact.create({
+              data: {
+                visitId: visit.id,
+                kind: artifact.kind,
+                label: artifact.label,
+                mimeType: artifact.mimeType,
+                sourceName: artifact.sourceName ?? null,
+                extractedText: artifact.extractedText || null,
+                summary: artifact.summary,
+                structuredJson:
+                  artifact.structuredJson ??
+                  JSON.stringify({
+                    findings: artifact.findings,
+                    evidenceSnippets: artifact.evidenceSnippets,
+                    medications: artifact.medications,
+                    vitals: artifact.vitals,
+                    instructions: artifact.instructions,
+                    extractedText: artifact.extractedText,
+                    summary: artifact.summary,
+                  }),
+              },
+            })
+          )
+        )
+      }
+
       const shareLink = await tx.shareLink.create({
         data: {
           visitId: visit.id,
@@ -112,6 +193,7 @@ export async function POST(req: NextRequest) {
         patientName: patient.displayName,
         documentationId: documentation.id,
         shareToken: shareLink.token,
+        artifactCount: evidenceArtifacts.length,
       }
     })
 

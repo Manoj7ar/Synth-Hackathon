@@ -26,8 +26,8 @@ const ProcessSteps = () => {
             How does this <span className="text-white">work?</span>
           </h2>
           <p className="text-xl leading-relaxed text-white">
-            Import a transcript, let Synth extract clinical signals, generate notes, and power a
-            patient chat agent grounded in visit evidence.
+            Import transcript or audio, attach supporting clinical images, and let Synth generate
+            evidence-backed notes and grounded follow-up.
           </p>
         </div>
 
@@ -37,11 +37,11 @@ const ProcessSteps = () => {
               <FileText className="w-6 h-6 text-[#38bdf8]" />
             </div>
             <h3 className="mb-4 text-[24px] font-semibold text-slate-900">
-              Add a transcript
+              Add visit evidence
             </h3>
             <p className="mb-8 text-[16px] leading-relaxed text-slate-700">
-              Bring a visit transcript and store it with an audit trail so you can review what was
-              said and what was generated.
+              Bring a transcript, audio recording, and optional image evidence so the record is
+              reviewable and grounded in more than one modality.
             </p>
 
             <div className="mt-auto w-full overflow-hidden rounded-xl border border-white/55 bg-white/45 p-3 backdrop-blur-md">
@@ -65,8 +65,8 @@ const ProcessSteps = () => {
               Extract + summarize
             </h3>
             <p className="mb-8 text-[16px] leading-relaxed text-slate-700">
-              Medications, symptoms, and vitals are extracted, then Synth generates summaries and
-              structured documentation like SOAP.
+              Medications, symptoms, vitals, and artifact evidence are extracted, then Synth
+              generates structured documentation like SOAP.
             </p>
 
             <div className="w-full mt-auto space-y-2">
@@ -85,7 +85,7 @@ const ProcessSteps = () => {
               </div>
               <div className="rounded-xl border border-white/50 bg-white/45 p-3 backdrop-blur-md">
                 <div className="line-clamp-1 text-[12px] font-medium text-slate-700">
-                  Summary and SOAP note draft generated with Amazon Nova
+                  Summary and SOAP note draft generated with Amazon Nova 2
                 </div>
               </div>
             </div>
@@ -99,8 +99,8 @@ const ProcessSteps = () => {
               Chat + audit
             </h3>
             <p className="mb-8 text-[16px] leading-relaxed text-slate-700">
-              Ask questions and see answers grounded in visit evidence, plus a trace of tools and
-              queries.
+              Ask questions and see answers grounded in transcript, note, and uploaded evidence,
+              plus a trace of tools and queries.
             </p>
 
             <div className="mt-auto w-full rounded-xl border border-[#38bdf8]/35 bg-white/45 p-4 border-dashed backdrop-blur-md">

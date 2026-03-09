@@ -199,6 +199,8 @@ function formatMessageContent(content: string): string {
       '<span class="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-mono">Transcript $1-$2</span>')
     .replace(/\[(Summary|SOAP|Appointment|Plan)\]/g,
       '<span class="inline-block px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs">$1</span>')
+    .replace(/\[Artifact: ([^\]]+)\]/g,
+      '<span class="inline-block px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs">Artifact: $1</span>')
     .replace(/\[Doc: ([^\]]+)\]/g, 
       '<span class="inline-block px-2 py-1 bg-green-100 text-green-700 rounded text-xs">$1</span>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')

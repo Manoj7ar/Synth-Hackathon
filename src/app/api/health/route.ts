@@ -3,6 +3,8 @@ import {
   getAppName,
   getAppVersion,
   getNextAuthUrl,
+  getNovaMultimodalModelId,
+  getNovaTextModelId,
   getPublicAppUrl,
   getUploadsBucketName,
   isAuthConfigured,
@@ -50,6 +52,8 @@ export async function GET() {
       config: {
         nextauthUrl: getNextAuthUrl() ?? null,
         publicAppUrl: getPublicAppUrl() ?? null,
+        novaTextModelId: getNovaTextModelId(),
+        novaMultimodalModelId: getNovaMultimodalModelId(),
         uploadsBucket: getUploadsBucketName() ?? null,
       },
       timestamp: new Date().toISOString(),

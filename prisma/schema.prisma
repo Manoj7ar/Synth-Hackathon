@@ -51,6 +51,7 @@ model Visit {
   clinician        User               @relation("ClinicianVisits", fields: [clinicianId], references: [id])
   shareLinks       ShareLink[]
   documentation    VisitDocumentation?
+  artifacts        VisitArtifact[]
   appointments     Appointment[]
   carePlanItems    CarePlanItem[]
   generatedReports GeneratedReport[]
@@ -73,6 +74,26 @@ model VisitDocumentation {
   visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
 
   @@index([visitId])
+}
+
+model VisitArtifact {
+  id             String   @id @default(cuid())
+  visitId         String
+  kind           String
+  label          String
+  mimeType       String
+  sourceName     String?
+  storageKey     String?
+  extractedText  String?
+  summary        String
+  structuredJson String?
+  createdAt      DateTime @default(now())
+
+  visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+  @@index([kind])
+  @@index([createdAt])
 }
 
 model ShareLink {

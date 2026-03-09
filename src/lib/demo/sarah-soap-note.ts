@@ -93,6 +93,92 @@ Patient presents for follow-up of hypertension and prior recurrent headaches. Re
 const SARAH_DEMO_ADDITIONAL_NOTES =
   'Demo record for tester walkthrough. Patient education reinforced on blood pressure logging, medication adherence, and urgent return precautions.'
 
+const SARAH_DEMO_ARTIFACTS = [
+  {
+    kind: 'document_photo',
+    label: 'Home blood pressure log photo',
+    mimeType: 'image/jpeg',
+    sourceName: 'sarah-home-bp-log.jpg',
+    extractedText:
+      'Mar 1 128/80, Mar 3 130/82, Mar 5 134/84, walking daily, no dizziness noted',
+    summary:
+      'Photo of the home blood pressure log shows multiple recent readings in the 128-134 systolic and 80-84 diastolic range, consistent with improved control.',
+    structuredJson: JSON.stringify({
+      summary:
+        'Photo of the home blood pressure log shows multiple recent readings in the 128-134 systolic and 80-84 diastolic range, consistent with improved control.',
+      extractedText:
+        'Mar 1 128/80, Mar 3 130/82, Mar 5 134/84, walking daily, no dizziness noted',
+      findings: [
+        'Home BP log remains below prior hypertensive range',
+        'Readings trend around 128-134 / 80-84',
+      ],
+      evidenceSnippets: [
+        'Mar 1: 128/80',
+        'Mar 3: 130/82',
+        'Mar 5: 134/84',
+      ],
+      vitals: [
+        { type: 'Blood pressure', value: '128/80', label: 'Mar 1' },
+        { type: 'Blood pressure', value: '130/82', label: 'Mar 3' },
+        { type: 'Blood pressure', value: '134/84', label: 'Mar 5' },
+      ],
+      medications: [],
+      instructions: ['Continue home BP logging'],
+    }),
+  },
+  {
+    kind: 'image',
+    label: 'Lisinopril bottle photo',
+    mimeType: 'image/jpeg',
+    sourceName: 'sarah-lisinopril-bottle.jpg',
+    extractedText: 'Lisinopril 10 mg tablet, take one tablet by mouth daily, refills: 0',
+    summary:
+      'Medication bottle image confirms lisinopril 10 mg once daily and supports the refill request raised during the visit.',
+    structuredJson: JSON.stringify({
+      summary:
+        'Medication bottle image confirms lisinopril 10 mg once daily and supports the refill request raised during the visit.',
+      extractedText: 'Lisinopril 10 mg tablet, take one tablet by mouth daily, refills: 0',
+      findings: [
+        'Medication label matches lisinopril discussed in visit transcript',
+        'Bottle indicates daily dosing',
+      ],
+      evidenceSnippets: [
+        'Lisinopril 10 mg tablet',
+        'Take one tablet by mouth daily',
+      ],
+      vitals: [],
+      medications: [{ name: 'Lisinopril', dosage: '10 mg', frequency: 'once daily' }],
+      instructions: ['Refill needed soon'],
+    }),
+  },
+] as const
+
+async function ensureSarahDemoArtifacts(prisma: any, visitId: string, createdAt: Date) {
+  const existing = await prisma.visitArtifact.findMany({
+    where: { visitId },
+    select: { label: true },
+  })
+  const existingLabels = new Set(existing.map((artifact: { label: string }) => artifact.label))
+
+  for (const artifact of SARAH_DEMO_ARTIFACTS) {
+    if (existingLabels.has(artifact.label)) continue
+
+    await prisma.visitArtifact.create({
+      data: {
+        visitId,
+        kind: artifact.kind,
+        label: artifact.label,
+        mimeType: artifact.mimeType,
+        sourceName: artifact.sourceName,
+        extractedText: artifact.extractedText,
+        summary: artifact.summary,
+        structuredJson: artifact.structuredJson,
+        createdAt,
+      },
+    })
+  }
+}
+
 export async function ensureSarahDemoSoapNoteForClinician(
   prisma: any,
   clinicianId: string
@@ -113,6 +199,7 @@ export async function ensureSarahDemoSoapNoteForClinician(
   })
 
   if (existing) {
+    await ensureSarahDemoArtifacts(prisma, existing.visitId, new Date(Date.now() - 1000 * 60 * 60 * 24))
     return existing
   }
 
@@ -154,6 +241,8 @@ export async function ensureSarahDemoSoapNoteForClinician(
         visitId: true,
       },
     })
+
+    await ensureSarahDemoArtifacts(tx, visit.id, finalizedAt)
 
     return documentation
   })

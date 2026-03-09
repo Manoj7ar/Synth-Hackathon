@@ -23,9 +23,9 @@ const marqueeCards = [
     body: "Track blood pressure, follow-up tasks, and care patterns across visits with grounded visit-linked data.",
   },
   {
-    label: "Workflows",
-    title: "Multi-agent handoffs with audit trail",
-    body: "Clinician, patient and triage agents working together, with a record of actions and outputs.",
+    label: "Evidence",
+    title: "Transcript, audio, and image-backed review",
+    body: "Bring visit audio together with transcript text and uploaded clinical images so the generated note is grounded in more than one source.",
   },
 ];
 
@@ -63,8 +63,8 @@ const WhySynth = () => {
             </span>
           </h2>
           <p className="mx-auto inline-block max-w-4xl rounded-full border border-[#e8d6b8] bg-[#fff7e8] px-6 py-3 text-base leading-relaxed text-slate-700 shadow-[0_8px_20px_rgba(94,72,35,0.12)] md:text-lg">
-            An AI medical visit assistant that turns conversations into extracted entities,
-            summaries and evidence-grounded agents. Built to be reviewable.
+            A multimodal medical visit assistant that turns transcript, audio, and image evidence
+            into extracted entities, reviewable notes, and grounded follow-up.
           </p>
         </div>
       </div>

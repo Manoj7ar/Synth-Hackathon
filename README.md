@@ -8,12 +8,13 @@
   <strong>Amazon Nova-powered clinical documentation and patient follow-up assistant built for the AWS hackathon.</strong>
 </p>
 
-Synth is a full-stack clinical workflow application for turning visit conversations into structured clinical documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, Prisma-backed clinician authentication, and AWS Transcribe-backed server audio processing.
+Synth is a full-stack clinical workflow application for turning visit conversations and supporting clinical evidence into structured documentation and grounded patient follow-up. It combines a public transcript-to-SOAP preview, clinician visit workflows, patient share links, Amazon Nova generation, optional multimodal image evidence review, Prisma-backed clinician authentication, and AWS Transcribe-backed server audio processing.
 
 It is built to show an end-to-end clinical workflow on AWS:
 
 - capture or upload visit audio
 - transcribe the conversation
+- attach supporting clinical image evidence such as a BP log or medication bottle
 - generate a summary and SOAP note with Amazon Nova
 - persist the visit and create a patient share link
 - answer grounded follow-up questions from the saved visit record
@@ -30,8 +31,9 @@ The app is designed around an AWS-native runtime:
 ## What Synth Does
 
 - Converts visit transcripts into summaries and SOAP notes
-- Supports transcript preview directly from the landing page
+- Supports transcript, audio, and optional image-evidence preview directly from the landing page
 - Saves visit documentation for authenticated clinician workflows
+- Stores visit-linked evidence artifacts with extracted findings
 - Creates patient share links for grounded post-visit chat
 - Extracts blood pressure history across visits and visualizes trends in chat
 - Supports Prisma-backed clinician authentication with NextAuth credentials sessions
@@ -49,11 +51,12 @@ Clinical documentation and post-visit communication are high-friction workflows.
 
 ### Public preview
 
-At `/`, Synth lets a reviewer paste a transcript or upload a transcript file and immediately generate:
+At `/`, Synth lets a reviewer paste a transcript or upload audio and optionally attach a clinical image artifact to immediately generate:
 
 - a parsed transcript view
 - a conversation summary
 - a SOAP note preview
+- an extracted evidence summary for the attached image artifact
 
 ### Clinician workflow
 
@@ -75,6 +78,7 @@ Patients open `/patient/[shareToken]` and chat with a grounded assistant that an
 - transcript content
 - visit summary
 - SOAP notes
+- uploaded image evidence artifacts
 - additional notes
 - appointments
 - care plan items
@@ -217,10 +221,7 @@ The Prisma schema centers on:
 - `CarePlanItem`
 - `GeneratedReport`
 
-`User` stores the clinician identity and profile fields used by the app, including:
-
-- `passwordHash`
-- `authProvider`
+`User` stores the clinician identity and profile fields used by the app, including `passwordHash`.
 
 ## Environment Variables
 
@@ -233,8 +234,9 @@ DIRECT_URL="postgresql://postgres:<PASSWORD>@<RDS_HOST>:5432/postgres"
 
 # AWS / Bedrock
 AWS_REGION=us-east-1
-BEDROCK_NOVA_TEXT_MODEL_ID=amazon.nova-lite-v1:0
-BEDROCK_NOVA_FAST_MODEL_ID=amazon.nova-micro-v1:0
+BEDROCK_NOVA_TEXT_MODEL_ID=us.amazon.nova-2-lite-v1:0
+BEDROCK_NOVA_FAST_MODEL_ID=us.amazon.nova-2-lite-v1:0
+BEDROCK_NOVA_MULTIMODAL_MODEL_ID=us.amazon.nova-2-lite-v1:0
 TRANSCRIBE_LANGUAGE_CODE=en-US
 
 # Local development only

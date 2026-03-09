@@ -113,8 +113,8 @@ export function TranscribeWorkspace({
               ) : null}
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 md:text-base md:leading-7">
                 {isRecordingFocus
-                  ? 'Capture the visit, monitor the live transcript, then save a structured record for SOAP generation.'
-                  : 'Record visits, review AI transcript segments, and save the session directly into your SOAP notes workflow.'}
+                  ? 'Capture the visit, monitor the live transcript, then save a structured record with optional image evidence for SOAP generation.'
+                  : 'Record visits, review AI transcript segments, attach supporting image evidence, and save the session directly into your SOAP notes workflow.'}
               </p>
             </div>
 
@@ -153,8 +153,8 @@ export function TranscribeWorkspace({
                     </h2>
                     <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">
                       Start recording, monitor live transcript quality, then stop to process the
-                      transcript and save the patient record for SOAP notes and follow-up
-                      workflows.
+                      transcript and save the patient record with optional multimodal evidence for
+                      SOAP notes and follow-up workflows.
                     </p>
                   </div>
                   <div className="grid gap-4 text-sm sm:grid-cols-2 lg:w-[24rem]">
@@ -173,7 +173,8 @@ export function TranscribeWorkspace({
                         <span className="font-medium">AI parsing</span>
                       </div>
                       <p className="mt-2.5 text-xs leading-5 text-slate-600">
-                        Segment transcript into doctor and patient turns.
+                        Segment transcript into doctor and patient turns, then blend in uploaded
+                        image evidence.
                       </p>
                     </div>
                   </div>
