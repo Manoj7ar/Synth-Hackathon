@@ -7,9 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { LogOut, ArrowLeft } from 'lucide-react'
 import {
-  grainTextureStyle,
-  heroBackdropStyle,
-  heroBloomStyle,
+  heroDandelionOverlayStyle,
+  heroImageBackdropStyle,
+  heroNoiseOverlayStyle,
 } from '@/lib/decorative-backgrounds'
 
 export default function SignOutPage() {
@@ -25,18 +25,18 @@ export default function SignOutPage() {
       <div
         aria-hidden="true"
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={heroBackdropStyle}
+        style={heroImageBackdropStyle}
       />
       <div
         aria-hidden="true"
         className="absolute inset-0 z-[1] bg-cover bg-bottom pointer-events-none"
-        style={heroBloomStyle}
+        style={heroDandelionOverlayStyle}
       />
       <div aria-hidden="true" className="absolute inset-0 z-[2] bg-black/35" />
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[3] pointer-events-none opacity-25"
-        style={grainTextureStyle}
+        style={heroNoiseOverlayStyle}
       />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center p-4">

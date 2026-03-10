@@ -10,6 +10,11 @@ import {
   Paperclip,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/soap-notes/MarkdownRenderer";
+import {
+  heroDandelionOverlayStyle,
+  heroImageBackdropStyle,
+  heroNoiseOverlayStyle,
+} from "@/lib/decorative-backgrounds";
 
 type InputTab = "transcript" | "audio";
 type SpeakerRole = "clinician" | "patient";
@@ -38,21 +43,6 @@ interface LandingSoapPreviewResponse {
   }>;
   error?: string;
 }
-
-const heroBackdropImageStyle: React.CSSProperties = {
-  backgroundImage: "url('/landing/hero-sky.jpg')",
-  backgroundSize: "cover",
-};
-
-const heroDandelionOverlayStyle: React.CSSProperties = {
-  backgroundImage: "url('/landing/hero-dandelions.png')",
-  backgroundSize: "cover",
-};
-
-const heroNoiseOverlayStyle: React.CSSProperties = {
-  backgroundImage: "url('/landing/hero-noise.png')",
-  backgroundRepeat: "repeat",
-};
 
 function formatTimestamp(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -151,7 +141,7 @@ const HeroSection: React.FC = () => {
       <div
         aria-hidden="true"
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={heroBackdropImageStyle}
+        style={heroImageBackdropStyle}
       />
       <div
         aria-hidden="true"
