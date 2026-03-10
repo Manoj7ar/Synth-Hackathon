@@ -10,11 +10,6 @@ import {
   Paperclip,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/soap-notes/MarkdownRenderer";
-import {
-  grainTextureStyle,
-  heroBackdropStyle,
-  heroBloomStyle,
-} from "@/lib/decorative-backgrounds";
 
 type InputTab = "transcript" | "audio";
 type SpeakerRole = "clinician" | "patient";
@@ -43,6 +38,21 @@ interface LandingSoapPreviewResponse {
   }>;
   error?: string;
 }
+
+const heroBackdropImageStyle: React.CSSProperties = {
+  backgroundImage: "url('/landing/hero-sky.jpg')",
+  backgroundSize: "cover",
+};
+
+const heroDandelionOverlayStyle: React.CSSProperties = {
+  backgroundImage: "url('/landing/hero-dandelions.png')",
+  backgroundSize: "cover",
+};
+
+const heroNoiseOverlayStyle: React.CSSProperties = {
+  backgroundImage: "url('/landing/hero-noise.png')",
+  backgroundRepeat: "repeat",
+};
 
 function formatTimestamp(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -141,17 +151,17 @@ const HeroSection: React.FC = () => {
       <div
         aria-hidden="true"
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={heroBackdropStyle}
+        style={heroBackdropImageStyle}
       />
       <div
         aria-hidden="true"
         className="absolute inset-0 z-[1] bg-cover bg-bottom opacity-100 pointer-events-none"
-        style={heroBloomStyle}
+        style={heroDandelionOverlayStyle}
       />
       <div
         aria-hidden="true"
         className="fixed inset-0 z-[2] pointer-events-none opacity-25"
-        style={grainTextureStyle}
+        style={heroNoiseOverlayStyle}
       />
 
       <div className="w-full max-w-5xl px-6 pt-20 pb-10 flex flex-col items-center space-y-8 text-center mt-[-20px]">
