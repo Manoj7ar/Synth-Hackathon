@@ -1,14 +1,14 @@
-﻿import { redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { prisma } from '@/lib/prisma'
-import { extractMedicalEntities } from '@/lib/clinical-entities'
+import { prisma } from '@/lib/data/prisma'
+import { extractMedicalEntities } from '@/lib/clinical/clinical-entities'
 import { TranscriptEditor } from '@/components/visit/TranscriptEditor'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { TranscriptChunk as EditorTranscriptChunk } from '@/types'
 import { FinalizeButton } from './FinalizeButton'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 type VisitTranscriptChunk = EditorTranscriptChunk & {
   id?: string

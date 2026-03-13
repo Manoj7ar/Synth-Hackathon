@@ -12,8 +12,8 @@ import {
   isNovaConfigured,
   isPublicUrlConfigured,
   isUploadsBucketConfigured,
-} from '@/lib/config'
-import { getPrismaDatabaseUrl, prisma } from '@/lib/prisma'
+} from '@/lib/aws/config'
+import { getPrismaDatabaseUrl, prisma } from '@/lib/data/prisma'
 
 export async function GET() {
   const databaseEnvPresent = Boolean(getPrismaDatabaseUrl())
@@ -61,3 +61,4 @@ export async function GET() {
     { status: ok ? 200 : 503 }
   )
 }
+

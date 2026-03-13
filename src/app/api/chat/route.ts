@@ -1,21 +1,21 @@
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { generateNovaText } from '@/lib/nova'
+import { authOptions } from '@/lib/auth/options'
+import { generateNovaText } from '@/lib/ai/nova'
 import {
   formatPatientTwinForPrompt,
   getPatientTwinForVisit,
   selectPatientTwinCitations,
   type PatientTwinCitation,
   type PatientTwinContext as LongitudinalPatientTwinContext,
-} from '@/lib/patient-twin'
-import { prisma } from '@/lib/prisma'
-import type { TranscriptSegment } from '@/lib/clinical-notes'
+} from '@/lib/clinical/patient-twin'
+import { prisma } from '@/lib/data/prisma'
+import type { TranscriptSegment } from '@/lib/clinical/clinical-notes'
 import {
   buildArtifactEvidenceExcerpt,
   parseStoredArtifact,
   type NormalizedVisitArtifact,
-} from '@/lib/visit-artifacts'
+} from '@/lib/clinical/visit-artifacts'
 
 type ChatAccessRole = 'clinician' | 'patient'
 
@@ -1306,3 +1306,4 @@ function streamResponse(data: StreamPayload, existingConversationId: string | nu
     },
   })
 }
+

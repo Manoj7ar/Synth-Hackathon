@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { TranscriptSegment } from '@/lib/clinical-notes'
+import type { TranscriptSegment } from '@/lib/clinical/clinical-notes'
 
 interface TranscriptPanelProps {
   transcript: TranscriptSegment[]
@@ -112,3 +112,4 @@ export function TranscriptPanel({ transcript }: TranscriptPanelProps) {
     </div>
   )
 }
+

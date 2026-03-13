@@ -5,10 +5,10 @@ import { ReconciliationWorkspace } from '@/components/reconciliation/Reconciliat
 import { Button } from '@/components/ui/button'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
-import { getPatientTwinForClinician } from '@/lib/patient-twin'
-import { prisma } from '@/lib/prisma'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
+import { getPatientTwinForClinician } from '@/lib/clinical/patient-twin'
+import { prisma } from '@/lib/data/prisma'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 export default async function ReconciliationDetailPage({
   params,

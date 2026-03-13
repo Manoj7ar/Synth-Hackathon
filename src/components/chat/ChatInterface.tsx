@@ -373,3 +373,4 @@ function parseVisualization(raw: unknown): ChatVisualization | undefined {
     data,
   }
 }
+

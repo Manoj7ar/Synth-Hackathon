@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { getClinicianSessionContext } from '@/lib/server/clinician-auth'
+import { prisma } from '@/lib/data/prisma'
+import { getClinicianSessionContext } from '@/lib/auth/clinician-auth'
 
 type ReportRecord = {
   id: string
@@ -77,7 +77,7 @@ async function generateMedicalReportContent(args: {
   additionalNotes: string
 }) {
   try {
-    const { generateNovaText } = await import('@/lib/nova')
+    const { generateNovaText } = await import('@/lib/ai/nova')
     const prompt = `You are a senior clinical documentation assistant.
 Generate a professional, print-ready, medical-grade report in markdown.
 Use concise clinical language and include only information present in the context.

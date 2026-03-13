@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import {
   FLOATING_SIDEBAR_STATE_EVENT,
   type FloatingSidebarStateDetail,
-} from '@/lib/floating-sidebar-events'
+} from '@/lib/ui/floating-sidebar-events'
 
 type SoapNotesFloatingHeaderProps = {
   eyebrow: string
@@ -71,3 +71,4 @@ export function SoapNotesFloatingHeader({
     </header>
   )
 }
+

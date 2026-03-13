@@ -842,3 +842,4 @@ export function TranscribeRecorder({ onRecordingFocusChange }: TranscribeRecorde
     </div>
   )
 }
+

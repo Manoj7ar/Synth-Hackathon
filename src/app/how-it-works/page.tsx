@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Bot, ClipboardList, FileAudio, ShieldCheck } from "lucide-react";
-import { grainTextureStyle } from "@/lib/decorative-backgrounds";
+import { grainTextureStyle } from "@/lib/ui/decorative-backgrounds";
 
 const steps = [
   {
@@ -117,3 +117,4 @@ export default function HowItWorksPage() {
     </main>
   );
 }
+

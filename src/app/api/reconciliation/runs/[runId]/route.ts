@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { getReconciliationRunDetail } from '@/lib/reconciliation'
+import { authOptions } from '@/lib/auth/options'
+import { getReconciliationRunDetail } from '@/lib/clinical/reconciliation'
 
 export async function GET(
   _req: NextRequest,

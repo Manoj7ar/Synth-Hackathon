@@ -77,3 +77,4 @@ export function TranscriptEditor({ chunks }: TranscriptEditorProps) {
     </div>
   )
 }
+

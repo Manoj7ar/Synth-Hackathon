@@ -1,4 +1,4 @@
-import { generateNovaMultimodalText, isNovaConfigured } from '@/lib/nova'
+import { generateNovaMultimodalText, isNovaConfigured } from '@/lib/ai/nova'
 
 export type VisitArtifactKind = 'image' | 'document_photo'
 
@@ -330,3 +330,4 @@ export function buildArtifactEvidenceExcerpt(artifact: NormalizedVisitArtifact) 
   }
   return artifact.summary
 }
+

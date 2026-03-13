@@ -61,3 +61,4 @@ export function AdditionalNotesEditor({ visitId, initialNotes }: AdditionalNotes
     </div>
   )
 }
+

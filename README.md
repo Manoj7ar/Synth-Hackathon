@@ -10,6 +10,8 @@
 
 Synth is a full-stack clinical workflow application for turning visit conversations and supporting evidence into structured documentation, longitudinal patient memory, and grounded follow-up actions.
 
+Want to learn more about how AWS is integrated in the application? Check out [`docs/architecture/aws-amazon-nova-integration-deep-dive.md`](docs/architecture/aws-amazon-nova-integration-deep-dive.md).
+
 The product is built around five connected surfaces:
 
 - public transcript or audio to SOAP preview
@@ -112,6 +114,20 @@ The fastest way to understand the project is:
 5. Run a new reconciliation pass and inspect the conflict ledger.
 6. Approve a suggested action into the live chart.
 7. Open the latest SOAP note and the patient follow-up flow.
+
+## Repository Layout
+
+The project is organized to make the hackathon story easy to follow:
+
+- `docs/hackathon/HACKATHON_QUICKSTART.md` - quickest setup, demo path, and judging checklist
+- `docs/architecture/aws-amazon-nova-integration-deep-dive.md` - technical architecture and AWS/Nova details
+- `src/lib/ai` - Bedrock and Amazon Nova integration
+- `src/lib/aws` - AWS configuration and Transcribe pipeline
+- `src/lib/auth` - NextAuth options and clinician session guards
+- `src/lib/clinical` - note generation, artifact extraction, Patient Twin, and Evidence Lab logic
+- `src/lib/data` - Prisma client, share tokens, and clinician profile storage
+- `src/lib/demo` - seeded Sarah Johnson demo journey
+- `src/lib/ui` - shared motion and UI-specific helpers
 
 ## Architecture
 
@@ -353,9 +369,15 @@ For hackathon judging, the intended deployment is an AWS-configured environment 
 
 ```bash
 npm run lint
-npx tsc --noEmit
+npm run typecheck
 npm run build
 npm run prisma:seed
+```
+
+Or run the full verification pass:
+
+```bash
+npm run verify
 ```
 
 ## AWS Deployment
@@ -393,7 +415,9 @@ Deployment assets:
 
 ## Additional Documentation
 
-- `AWS_AMAZON_NOVA_INTEGRATION_DEEP_DIVE.md` - technical architecture, runtime flow, and data model
+- `docs/README.md` - documentation index for judges, builders, and deployment review
+- `docs/hackathon/HACKATHON_QUICKSTART.md` - demo path, setup, and repo map
+- `docs/architecture/aws-amazon-nova-integration-deep-dive.md` - technical architecture, runtime flow, and data model
 - `infra/terraform/README.md`
 
 ## License

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from 'bcryptjs'
 import { NextResponse } from 'next/server'
-import { createPrismaClient, prisma } from '@/lib/prisma'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
+import { createPrismaClient, prisma } from '@/lib/data/prisma'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 
 function normalizeEmail(value: unknown) {
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -124,3 +124,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unable to create account right now' }, { status: 500 })
   }
 }
+

@@ -1,17 +1,17 @@
-import type { TranscriptSegment } from '@/lib/clinical-notes'
-import { extractMedicalEntities } from '@/lib/clinical-entities'
-import { generateNovaText, isNovaConfigured } from '@/lib/nova'
+import type { TranscriptSegment } from '@/lib/clinical/clinical-notes'
+import { extractMedicalEntities } from '@/lib/clinical/clinical-entities'
+import { generateNovaText, isNovaConfigured } from '@/lib/ai/nova'
 import {
   getPatientTwinForClinician,
   type PatientTwinCitation,
   type PatientTwinContext,
-} from '@/lib/patient-twin'
-import { prisma } from '@/lib/prisma'
+} from '@/lib/clinical/patient-twin'
+import { prisma } from '@/lib/data/prisma'
 import {
   buildArtifactEvidenceExcerpt,
   parseStoredArtifact,
   type NormalizedVisitArtifact,
-} from '@/lib/visit-artifacts'
+} from '@/lib/clinical/visit-artifacts'
 
 export type ReconciliationAgentKey = 'transcript' | 'artifact' | 'timeline' | 'reconciler'
 export type ReconciliationClaimStatus = 'supported' | 'watch' | 'conflicted' | 'unresolved'
@@ -1640,3 +1640,4 @@ function normalizeActionStatus(value: string): ReconciliationActionStatus {
   }
   return 'suggested'
 }
+

@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { generateShareToken } from '@/lib/share-token'
+import { authOptions } from '@/lib/auth/options'
+import { prisma } from '@/lib/data/prisma'
+import { generateShareToken } from '@/lib/data/share-token'
 import {
   deriveChiefComplaint,
   generateConversationSummary,
   generateSoapNotesFromTranscript,
   type TranscriptSegment,
-} from '@/lib/clinical-notes'
+} from '@/lib/clinical/clinical-notes'
 import {
   extractClinicalImageArtifact,
   formatArtifactsForClinicalPrompt,
   type NormalizedVisitArtifact,
-} from '@/lib/visit-artifacts'
+} from '@/lib/clinical/visit-artifacts'
 
 interface SaveTranscribePayload {
   patientName?: string
@@ -206,3 +206,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save transcription' }, { status: 500 })
   }
 }
+

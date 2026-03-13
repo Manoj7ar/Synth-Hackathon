@@ -2,10 +2,10 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { LogOut, Plus } from 'lucide-react'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/data/prisma'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 
 function profileSubtitle(practiceName: string | null, specialty: string | null) {
   const parts = [specialty, practiceName].filter(Boolean)
@@ -131,3 +131,4 @@ export default async function SoapNotesPage() {
     </div>
   )
 }
+

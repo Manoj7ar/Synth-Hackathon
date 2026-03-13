@@ -14,7 +14,7 @@ import {
   heroDandelionOverlayStyle,
   heroImageBackdropStyle,
   heroNoiseOverlayStyle,
-} from "@/lib/decorative-backgrounds";
+} from "@/lib/ui/decorative-backgrounds";
 
 type InputTab = "transcript" | "audio";
 type SpeakerRole = "clinician" | "patient";
@@ -562,3 +562,4 @@ const HeroSection: React.FC = () => {
 };
 
 export default HeroSection;
+

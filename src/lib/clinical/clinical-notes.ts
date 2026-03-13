@@ -1,4 +1,4 @@
-﻿import { generateNovaText } from '@/lib/nova'
+import { generateNovaText } from '@/lib/ai/nova'
 
 export type TranscriptSpeaker = 'clinician' | 'patient'
 
@@ -172,4 +172,5 @@ ${options?.additionalEvidenceContext?.trim() ? `\n- Additional evidence reviewed
 - Review medications, follow-up schedule, and return precautions with patient.
 `
 }
+
 

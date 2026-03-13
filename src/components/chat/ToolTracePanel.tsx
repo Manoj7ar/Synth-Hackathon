@@ -68,3 +68,4 @@ export function ToolTracePanel({ events }: ToolTracePanelProps) {
     </div>
   )
 }
+

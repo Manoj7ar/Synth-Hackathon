@@ -1,5 +1,5 @@
 import React from "react";
-import { grainTextureStyle } from "@/lib/decorative-backgrounds";
+import { grainTextureStyle } from "@/lib/ui/decorative-backgrounds";
 
 const marqueeCards = [
   {
@@ -86,3 +86,4 @@ const WhySynth = () => {
 };
 
 export default WhySynth;
+

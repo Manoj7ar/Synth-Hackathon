@@ -99,3 +99,4 @@ export interface Analytics {
   topSymptoms: Array<{ name: string; count: number }>
   visitsOverTime: Array<{ date: string; count: number }>
 }
+

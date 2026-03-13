@@ -1,5 +1,5 @@
 import { NewVisitForm } from '@/components/clinician/NewVisitForm'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 export default async function NewVisitPage() {
   const { user } = await requireClinicianPage()
@@ -12,4 +12,5 @@ export default async function NewVisitPage() {
     />
   )
 }
+
 

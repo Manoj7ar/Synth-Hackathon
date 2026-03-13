@@ -1,11 +1,11 @@
-﻿import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
+import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime'
 import {
   getAwsRegion,
   getNovaFastModelId,
   getNovaMultimodalModelId,
   getNovaTextModelId,
   isNovaConfigured,
-} from '@/lib/config'
+} from '@/lib/aws/config'
 
 type NovaMessage = {
   role: 'user' | 'assistant'
@@ -153,4 +153,5 @@ export async function generateNovaMultimodalText(args: GenerateNovaMultimodalTex
 }
 
 export { isNovaConfigured }
+
 

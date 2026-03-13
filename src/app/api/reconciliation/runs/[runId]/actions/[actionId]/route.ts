@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { decideReconciliationAction } from '@/lib/reconciliation'
+import { authOptions } from '@/lib/auth/options'
+import { decideReconciliationAction } from '@/lib/clinical/reconciliation'
 
 type ActionDecisionPayload = {
   decision?: 'approve' | 'dismiss'

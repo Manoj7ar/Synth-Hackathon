@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { getClinicianSessionContext } from '@/lib/server/clinician-auth'
+import { prisma } from '@/lib/data/prisma'
+import { getClinicianSessionContext } from '@/lib/auth/clinician-auth'
 
 type ProfileResponse = {
   profile: {
@@ -124,3 +124,4 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 })
   }
 }
+

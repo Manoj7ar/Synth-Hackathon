@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/data/prisma'
 import { redirect } from 'next/navigation'
 import { PatientAgentShell } from '@/components/patient/PatientAgentShell'
 

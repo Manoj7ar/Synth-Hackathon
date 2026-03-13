@@ -2,8 +2,8 @@ import 'server-only'
 
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth/options'
+import { prisma } from '@/lib/data/prisma'
 
 export type ClinicianUserProfile = {
   id: string
@@ -70,3 +70,4 @@ export async function requireClinicianPage(options?: {
 
   return context
 }
+

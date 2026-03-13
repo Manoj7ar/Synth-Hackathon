@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { isAwsTranscribeConfigured, isNovaConfigured } from '@/lib/config'
-import { transcribeAudioFile } from '@/lib/transcribe'
+import { authOptions } from '@/lib/auth/options'
+import { isAwsTranscribeConfigured, isNovaConfigured } from '@/lib/aws/config'
+import { transcribeAudioFile } from '@/lib/aws/transcribe'
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,3 +51,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+

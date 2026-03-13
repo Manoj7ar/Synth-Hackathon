@@ -1,10 +1,10 @@
-import type { TranscriptSegment } from '@/lib/clinical-notes'
-import { prisma } from '@/lib/prisma'
+import type { TranscriptSegment } from '@/lib/clinical/clinical-notes'
+import { prisma } from '@/lib/data/prisma'
 import {
   buildArtifactEvidenceExcerpt,
   parseStoredArtifact,
   type NormalizedVisitArtifact,
-} from '@/lib/visit-artifacts'
+} from '@/lib/clinical/visit-artifacts'
 
 type TwinVisitRow = {
   id: string
@@ -1223,3 +1223,4 @@ function isValidReadingValue(value: string) {
 function isValidBloodPressure(systolic: number, diastolic: number) {
   return systolic >= 70 && systolic <= 260 && diastolic >= 40 && diastolic <= 160
 }
+

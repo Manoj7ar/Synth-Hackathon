@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { grainTextureStyle } from "@/lib/decorative-backgrounds";
+import { grainTextureStyle } from "@/lib/ui/decorative-backgrounds";
 
 const stackItems = [
   {
@@ -199,3 +199,4 @@ export default function TechnologyPage() {
     </main>
   );
 }
+

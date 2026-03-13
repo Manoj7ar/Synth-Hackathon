@@ -7,8 +7,8 @@ import {
   TranscribeClient,
   StartTranscriptionJobCommand,
 } from '@aws-sdk/client-transcribe'
-import { getAwsRegion, getTranscribeLanguageCode, getUploadsBucketName, isAwsTranscribeConfigured } from '@/lib/config'
-import type { TranscriptSegment, TranscriptSpeaker } from '@/lib/clinical-notes'
+import { getAwsRegion, getTranscribeLanguageCode, getUploadsBucketName, isAwsTranscribeConfigured } from '@/lib/aws/config'
+import type { TranscriptSegment, TranscriptSpeaker } from '@/lib/clinical/clinical-notes'
 
 type AwsTranscribeResponse = {
   results?: {
@@ -258,3 +258,4 @@ export async function transcribeAudioFile(file: File) {
     duration_ms: computeDurationMs(transcript),
   }
 }
+

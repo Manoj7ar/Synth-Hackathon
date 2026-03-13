@@ -39,3 +39,4 @@ export const warmMeshStyle: CSSProperties = {
   backgroundImage:
     'radial-gradient(circle at center, rgba(56, 189, 248, 0.18), transparent 60%), linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 50%, rgba(232,212,179,0.3) 100%)',
 }
+

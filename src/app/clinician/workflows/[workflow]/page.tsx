@@ -11,7 +11,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 type WorkflowKey = 'morning-review' | 'medication-risk-sweep' | 'trend-watch'
 

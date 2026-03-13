@@ -16,10 +16,10 @@ import { ChatInterface } from '@/components/chat/ChatInterface'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { PatientTwinTrendChart } from '@/components/patient-twin/PatientTwinTrendChart'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
-import { getPatientTwinForClinician } from '@/lib/patient-twin'
-import { prisma } from '@/lib/prisma'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
+import { getPatientTwinForClinician } from '@/lib/clinical/patient-twin'
+import { prisma } from '@/lib/data/prisma'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat('en-US', {

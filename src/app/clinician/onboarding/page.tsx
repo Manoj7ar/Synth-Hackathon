@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { ClinicianOnboardingForm } from '@/components/clinician/ClinicianOnboardingForm'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 function asSingle(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
@@ -67,3 +67,4 @@ export default async function ClinicianOnboardingPage({
     </div>
   )
 }
+

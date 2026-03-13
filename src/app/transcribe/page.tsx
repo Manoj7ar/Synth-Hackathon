@@ -1,5 +1,5 @@
 import { TranscribeWorkspace } from '@/components/transcribe/TranscribeWorkspace'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 export default async function TranscribePage() {
   const { user } = await requireClinicianPage()
@@ -12,3 +12,4 @@ export default async function TranscribePage() {
     />
   )
 }
+

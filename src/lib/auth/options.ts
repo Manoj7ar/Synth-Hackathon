@@ -1,8 +1,8 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { prisma } from './prisma'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
+import { prisma } from '@/lib/data/prisma'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 
 async function resolveDatabaseUserForToken(input: {
   userId?: string | null
@@ -177,3 +177,4 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
 }
+

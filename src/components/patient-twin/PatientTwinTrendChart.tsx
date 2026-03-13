@@ -68,3 +68,4 @@ export function PatientTwinTrendChart({ data }: PatientTwinTrendChartProps) {
     </div>
   )
 }
+

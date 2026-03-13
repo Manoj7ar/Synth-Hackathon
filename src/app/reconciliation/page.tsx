@@ -3,9 +3,9 @@ import { BrainCircuit, FlaskConical, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-soap-note'
-import { prisma } from '@/lib/prisma'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
+import { prisma } from '@/lib/data/prisma'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 function formatDate(date: Date | null) {
   if (!date) return 'No finalized visit yet'
@@ -273,3 +273,4 @@ export default async function ReconciliationIndexPage() {
     </div>
   )
 }
+

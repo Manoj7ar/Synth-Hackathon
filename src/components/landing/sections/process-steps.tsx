@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrowRight, FileText, MessageSquare, WandSparkles } from "lucide-react";
-import { grainTextureStyle, warmMeshStyle } from "@/lib/decorative-backgrounds";
+import { grainTextureStyle, warmMeshStyle } from "@/lib/ui/decorative-backgrounds";
 
 const ProcessSteps = () => {
   return (
@@ -132,3 +132,4 @@ const ProcessSteps = () => {
 };
 
 export default ProcessSteps;
+

@@ -49,14 +49,14 @@ That distinction matters. The project now has richer surfaces than a pure demo, 
 
 The files most relevant to this architecture are:
 
-- [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts)
-- [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts)
-- [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
-- [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts)
-- [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts)
-- [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/patient-twin.ts)
-- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/reconciliation.ts)
-- [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth.ts)
+- [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/ai/nova.ts)
+- [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/config.ts)
+- [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/clinical-notes.ts)
+- [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/transcribe.ts)
+- [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/visit-artifacts.ts)
+- [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/patient-twin.ts)
+- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/reconciliation.ts)
+- [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth/options.ts)
 - [`src/app/api/landing/soap-preview/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/landing/soap-preview/route.ts)
 - [`src/app/api/transcribe/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/route.ts)
 - [`src/app/api/transcribe/save/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/transcribe/save/route.ts)
@@ -153,11 +153,11 @@ Inputs:
 Behavior:
 
 1. If the request is transcript mode, the route parses either structured transcript JSON or plain text into normalized segments.
-2. If the request is audio mode, the route requires AWS Transcribe configuration and delegates audio processing to [`transcribeAudioFile()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts).
-3. If an image is attached, the route calls [`extractClinicalImageArtifact()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts) to normalize the evidence into summary text, findings, vitals, medications, and extracted text.
+2. If the request is audio mode, the route requires AWS Transcribe configuration and delegates audio processing to [`transcribeAudioFile()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/transcribe.ts).
+3. If an image is attached, the route calls [`extractClinicalImageArtifact()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/visit-artifacts.ts) to normalize the evidence into summary text, findings, vitals, medications, and extracted text.
 4. The route sends the transcript plus any artifact evidence context into:
-   - [`generateConversationSummary()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
-   - [`generateSoapNotesFromTranscript()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+   - [`generateConversationSummary()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/clinical-notes.ts)
+   - [`generateSoapNotesFromTranscript()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/clinical-notes.ts)
 5. The response returns transcript segments, summary, SOAP note, and any extracted artifact payload.
 
 Persistence behavior:
@@ -168,7 +168,7 @@ Failure behavior:
 
 - transcript mode can operate without Transcribe
 - audio mode returns `503` if Transcribe is not configured
-- Nova failures in summary or SOAP generation fall back to deterministic text assembly in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+- Nova failures in summary or SOAP generation fall back to deterministic text assembly in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/clinical-notes.ts)
 - image extraction falls back to conservative artifact placeholders if Nova multimodal analysis is unavailable
 
 ## Clinician Documentation Pipeline
@@ -188,7 +188,7 @@ The authenticated clinician flow has two main API paths:
 
 That Nova dependency is a current product choice, not a speech-system requirement. The route treats transcription as part of the end-to-end AI documentation workflow and returns a clear `503` if the environment is not fully configured for that path.
 
-The actual transcription implementation in [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/transcribe.ts):
+The actual transcription implementation in [`src/lib/transcribe.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/transcribe.ts):
 
 1. validates the file type
 2. uploads the audio to S3
@@ -238,7 +238,7 @@ That keeps the write path short and avoids holding an open transaction across mo
 
 ## Multimodal Artifact Pipeline
 
-Synth currently supports image evidence artifacts through [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/visit-artifacts.ts).
+Synth currently supports image evidence artifacts through [`src/lib/visit-artifacts.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/visit-artifacts.ts).
 
 The normalized artifact shape includes:
 
@@ -258,7 +258,7 @@ Supported image MIME types:
 - `image/webp`
 - `image/gif`
 
-The artifact extraction path uses [`generateNovaMultimodalText()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts) when Nova is configured. It requests strict JSON output and then normalizes that response into a stable internal shape.
+The artifact extraction path uses [`generateNovaMultimodalText()`](C:/Users/manoj/CascadeProjects/Synth/src/lib/ai/nova.ts) when Nova is configured. It requests strict JSON output and then normalizes that response into a stable internal shape.
 
 If multimodal Nova is unavailable or fails:
 
@@ -288,7 +288,7 @@ That is intentional. It gives the app one reliable post-processing surface even 
 
 ## Patient Twin Pipeline
 
-The Patient Twin implementation lives in [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/patient-twin.ts).
+The Patient Twin implementation lives in [`src/lib/patient-twin.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/patient-twin.ts).
 
 It loads all visits for a patient scoped to one clinician and synthesizes:
 
@@ -340,7 +340,7 @@ Evidence Lab is the most important new technical surface in the codebase.
 
 Relevant implementation files:
 
-- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/reconciliation.ts)
+- [`src/lib/reconciliation.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/reconciliation.ts)
 - [`src/app/api/reconciliation/runs/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/route.ts)
 - [`src/app/api/reconciliation/runs/[runId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/route.ts)
 - [`src/app/api/reconciliation/runs/[runId]/actions/[actionId]/route.ts`](C:/Users/manoj/CascadeProjects/Synth/src/app/api/reconciliation/runs/%5BrunId%5D/actions/%5BactionId%5D/route.ts)
@@ -476,7 +476,7 @@ The authentication stack is intentionally conservative:
 
 Relevant file:
 
-- [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth.ts)
+- [`src/lib/auth.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/auth/options.ts)
 
 ### Credentials authorize flow
 
@@ -508,7 +508,7 @@ That keeps auth simple while still exposing clinician profile data to server and
 
 ## Bedrock and Amazon Nova Integration
 
-The Bedrock wrapper lives in [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/nova.ts).
+The Bedrock wrapper lives in [`src/lib/nova.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/ai/nova.ts).
 
 Its API surface is intentionally small:
 
@@ -519,7 +519,7 @@ Its API surface is intentionally small:
 
 ### Model selection
 
-Model IDs come from [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts).
+Model IDs come from [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/config.ts).
 
 Current defaults:
 
@@ -669,7 +669,7 @@ The tradeoff remains queryability. If transcript analytics become a first-class 
 
 ## Configuration and Health Model
 
-Runtime configuration lives in [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/config.ts).
+Runtime configuration lives in [`src/lib/config.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/aws/config.ts).
 
 Important environment variables:
 
@@ -717,7 +717,7 @@ Transcribe readiness is reported, but it is not part of the overall health succe
 
 Current behavior depends on the route:
 
-- summary and SOAP generation fall back to deterministic builders in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical-notes.ts)
+- summary and SOAP generation fall back to deterministic builders in [`src/lib/clinical-notes.ts`](C:/Users/manoj/CascadeProjects/Synth/src/lib/clinical/clinical-notes.ts)
 - multimodal artifact extraction falls back to conservative placeholder artifacts
 - chat falls back to deterministic answers for things like appointments, care-plan items, evidence references, and BP trends
 - Evidence Lab still persists lane outputs because its transcript, artifact, and timeline passes are mostly deterministic, but the final reconciler summary falls back to plain server-generated text

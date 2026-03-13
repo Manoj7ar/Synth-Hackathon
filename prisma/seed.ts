@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
-import { ensureSarahDemoSoapNoteForClinician } from '../src/lib/demo/sarah-soap-note'
-import { createPrismaClient } from '../src/lib/prisma'
+import { ensureSarahDemoSoapNoteForClinician } from '../src/lib/demo/sarah-demo'
+import { createPrismaClient } from '../src/lib/data/prisma'
 
 const prisma = createPrismaClient()
 
@@ -34,3 +34,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
+

@@ -9,7 +9,7 @@ import type {
   ReconciliationAgentResult,
   ReconciliationRunDetail,
   ReconciliationRunSummary,
-} from '@/lib/reconciliation'
+} from '@/lib/clinical/reconciliation'
 
 type ReconciliationWorkspaceProps = {
   patientId: string
@@ -590,3 +590,4 @@ export function ReconciliationWorkspace({
     </div>
   )
 }
+

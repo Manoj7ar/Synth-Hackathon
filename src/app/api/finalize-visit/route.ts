@@ -1,9 +1,9 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { extractMedicalEntities } from '@/lib/clinical-entities'
-import { generateShareToken } from '@/lib/share-token'
+import { authOptions } from '@/lib/auth/options'
+import { prisma } from '@/lib/data/prisma'
+import { extractMedicalEntities } from '@/lib/clinical/clinical-entities'
+import { generateShareToken } from '@/lib/data/share-token'
 
 type MedicationSummary = {
   name: string
@@ -306,3 +306,4 @@ function extractFollowups(chunks: TranscriptChunk[]) {
 
   return followups
 }
+

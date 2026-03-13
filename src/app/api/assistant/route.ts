@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth/options'
+import { prisma } from '@/lib/data/prisma'
 
 type AssistantRequestMessage = {
   role: 'user' | 'assistant'
@@ -434,7 +434,7 @@ Latest SOAP notes excerpt: ${matchedPatient.soapNotes.slice(0, 700)}`
     let answer = ''
 
     try {
-      const { generateNovaText } = await import('@/lib/nova')
+      const { generateNovaText } = await import('@/lib/ai/nova')
       const prompt = `You are Synth Assist, a concise in-app assistant for a medical AI app.
 You help with:
 1) App navigation.
@@ -508,3 +508,4 @@ Respond with plain text only.`
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+

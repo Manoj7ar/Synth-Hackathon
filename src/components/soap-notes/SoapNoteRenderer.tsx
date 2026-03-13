@@ -708,3 +708,4 @@ export function SoapNoteRenderer({ content, visitId, patientName }: SoapNoteRend
     </>
   )
 }
+

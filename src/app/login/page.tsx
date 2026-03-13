@@ -17,7 +17,7 @@ import {
   heroDandelionOverlayStyle,
   heroImageBackdropStyle,
   heroNoiseOverlayStyle,
-} from '@/lib/decorative-backgrounds'
+} from '@/lib/ui/decorative-backgrounds'
 
 type AuthMode = 'signin' | 'signup'
 
@@ -351,3 +351,4 @@ export default function LoginPage() {
     </div>
   )
 }
+

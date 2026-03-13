@@ -10,7 +10,7 @@ import {
   heroDandelionOverlayStyle,
   heroImageBackdropStyle,
   heroNoiseOverlayStyle,
-} from '@/lib/decorative-backgrounds'
+} from '@/lib/ui/decorative-backgrounds'
 
 export default function SignOutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,3 +75,4 @@ export default function SignOutPage() {
     </div>
   )
 }
+

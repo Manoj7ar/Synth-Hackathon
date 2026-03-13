@@ -1,5 +1,5 @@
 import { ClinicianWorkspace } from '@/components/clinician/ClinicianWorkspace'
-import { requireClinicianPage } from '@/lib/server/clinician-auth'
+import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 export default async function ClinicianDashboard() {
   const { user } = await requireClinicianPage()
@@ -12,3 +12,4 @@ export default async function ClinicianDashboard() {
     />
   )
 }
+

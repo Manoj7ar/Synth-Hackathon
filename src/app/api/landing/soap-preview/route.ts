@@ -1,17 +1,17 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
-import { isAwsTranscribeConfigured } from '@/lib/config'
+import { NextRequest, NextResponse } from 'next/server'
+import { isAwsTranscribeConfigured } from '@/lib/aws/config'
 import {
   deriveChiefComplaint,
   generateConversationSummary,
   generateSoapNotesFromTranscript,
   type TranscriptSegment,
   type TranscriptSpeaker,
-} from '@/lib/clinical-notes'
-import { transcribeAudioFile } from '@/lib/transcribe'
+} from '@/lib/clinical/clinical-notes'
+import { transcribeAudioFile } from '@/lib/aws/transcribe'
 import {
   extractClinicalImageArtifact,
   formatArtifactsForClinicalPrompt,
-} from '@/lib/visit-artifacts'
+} from '@/lib/clinical/visit-artifacts'
 
 function inferSpeakerFromText(text: string, previousSpeaker: TranscriptSpeaker): TranscriptSpeaker {
   const normalized = text.toLowerCase()
@@ -269,4 +269,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
 

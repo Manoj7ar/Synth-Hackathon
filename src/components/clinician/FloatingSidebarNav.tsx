@@ -15,7 +15,7 @@ import {
 import {
   FLOATING_SIDEBAR_STATE_EVENT,
   type FloatingSidebarStateDetail,
-} from '@/lib/floating-sidebar-events'
+} from '@/lib/ui/floating-sidebar-events'
 
 type NavItem = {
   key: 'ai-chat' | 'transcribe' | 'soap-notes' | 'patient-twin' | 'evidence-lab'
@@ -144,3 +144,4 @@ export function FloatingSidebarNav({
     </aside>
   )
 }
+

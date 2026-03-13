@@ -1,7 +1,7 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth/options'
+import { prisma } from '@/lib/data/prisma'
 
 function formatDayKey(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -58,4 +58,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 })
   }
 }
+
 

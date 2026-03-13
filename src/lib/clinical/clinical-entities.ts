@@ -1,4 +1,4 @@
-﻿const MEDICAL_KEYWORDS = {
+const MEDICAL_KEYWORDS = {
   medications: [
     'aspirin', 'ibuprofen', 'acetaminophen', 'tylenol', 'advil',
     'lisinopril', 'metformin', 'atorvastatin', 'amlodipine', 'simvastatin',
@@ -145,7 +145,7 @@ export async function extractMedicalEntities(text: string): Promise<ExtractedEnt
     })
   }
 
-  const tempRegex = /(?:temperature|temp)\s*:?\s*(\d{2,3}\.?\d?)\s*(?:°?[fc])?/gi
+  const tempRegex = /(?:temperature|temp)\s*:?\s*(\d{2,3}\.?\d?)\s*(?:�?[fc])?/gi
   let tempMatch: RegExpExecArray | null
   while ((tempMatch = tempRegex.exec(textLower)) !== null) {
     entities.vitals.push({
@@ -164,4 +164,5 @@ export async function extractMedicalEntities(text: string): Promise<ExtractedEnt
 
   return entities
 }
+
 
