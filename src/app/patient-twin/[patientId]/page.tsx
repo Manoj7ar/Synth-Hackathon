@@ -16,9 +16,7 @@ import { ChatInterface } from '@/components/chat/ChatInterface'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { PatientTwinTrendChart } from '@/components/patient-twin/PatientTwinTrendChart'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 import { getPatientTwinForClinician } from '@/lib/clinical/patient-twin'
-import { prisma } from '@/lib/data/prisma'
 import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 function formatDate(date: Date) {
@@ -46,12 +44,6 @@ export default async function PatientTwinDetailPage({
 }) {
   const { user } = await requireClinicianPage()
   const { patientId } = await params
-
-  try {
-    await ensureSarahDemoSoapNoteForClinician(prisma, user.id)
-  } catch (error) {
-    console.warn('Unable to ensure Sarah demo patient twin:', error)
-  }
 
   const twin = await getPatientTwinForClinician({
     patientId,

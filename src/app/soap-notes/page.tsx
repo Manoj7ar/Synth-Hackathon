@@ -4,8 +4,8 @@ import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { LogOut, Plus } from 'lucide-react'
 import { prisma } from '@/lib/data/prisma'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
+import { SoapNotesRecordList } from '@/components/soap-notes/SoapNotesRecordList'
 import { requireClinicianPage } from '@/lib/auth/clinician-auth'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 
 function profileSubtitle(practiceName: string | null, specialty: string | null) {
   const parts = [specialty, practiceName].filter(Boolean)
@@ -14,12 +14,6 @@ function profileSubtitle(practiceName: string | null, specialty: string | null) 
 
 export default async function SoapNotesPage() {
   const { user } = await requireClinicianPage()
-
-  try {
-    await ensureSarahDemoSoapNoteForClinician(prisma, user.id)
-  } catch (error) {
-    console.warn('Unable to ensure Sarah demo SOAP note:', error)
-  }
 
   const records = await prisma.visitDocumentation.findMany({
     where: {
@@ -97,34 +91,16 @@ export default async function SoapNotesPage() {
             additional notes.
           </p>
 
-          <div className="mt-8 space-y-3">
-            {records.length === 0 ? (
-              <div className="rounded-2xl border border-[#eadfcd] bg-white/80 px-4 py-6 text-sm text-slate-600">
-                No saved transcriptions yet. Record and save one from the Transcribe page.
-              </div>
-            ) : (
-              records.map((record) => (
-                <Link
-                  key={record.id}
-                  href={`/soap-notes/${record.visitId}`}
-                  className="block rounded-2xl border border-[#eadfcd] bg-white/80 px-4 py-4 transition hover:bg-white"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {record.visit.patient.displayName}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                        {record.summary.replace(/\n+/g, ' ').slice(0, 180)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-xs font-medium text-slate-500">
-                      {new Date(record.updatedAt).toLocaleString()}
-                    </div>
-                  </div>
-                </Link>
-              ))
-            )}
+          <div className="mt-8">
+            <SoapNotesRecordList
+              initialRecords={records.map((record) => ({
+                id: record.id,
+                visitId: record.visitId,
+                patientName: record.visit.patient.displayName,
+                summary: record.summary,
+                updatedAt: record.updatedAt.toISOString(),
+              }))}
+            />
           </div>
         </div>
       </main>

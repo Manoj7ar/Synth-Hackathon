@@ -3,7 +3,6 @@ import { BrainCircuit, FileText, LogOut, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 import { prisma } from '@/lib/data/prisma'
 import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
@@ -18,12 +17,6 @@ function formatDate(date: Date | null) {
 
 export default async function PatientTwinIndexPage() {
   const { user } = await requireClinicianPage()
-
-  try {
-    await ensureSarahDemoSoapNoteForClinician(prisma, user.id)
-  } catch (error) {
-    console.warn('Unable to ensure Sarah demo patient twin:', error)
-  }
 
   const patientRows = await prisma.patient.findMany({
     where: {
@@ -212,14 +205,7 @@ export default async function PatientTwinIndexPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-lg font-semibold text-slate-900">{patient.displayName}</p>
-                      {patient.displayName === 'Sarah Johnson' && (
-                        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                          Demo path
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-lg font-semibold text-slate-900">{patient.displayName}</p>
                     <p className="mt-1 text-sm text-slate-600">{patient.latestComplaint}</p>
                   </div>
                   <div className="text-right text-xs text-slate-500">

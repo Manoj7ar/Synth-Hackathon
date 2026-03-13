@@ -5,9 +5,7 @@ import { ReconciliationWorkspace } from '@/components/reconciliation/Reconciliat
 import { Button } from '@/components/ui/button'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 import { getPatientTwinForClinician } from '@/lib/clinical/patient-twin'
-import { prisma } from '@/lib/data/prisma'
 import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
 export default async function ReconciliationDetailPage({
@@ -17,12 +15,6 @@ export default async function ReconciliationDetailPage({
 }) {
   const { user } = await requireClinicianPage()
   const { patientId } = await params
-
-  try {
-    await ensureSarahDemoSoapNoteForClinician(prisma, user.id)
-  } catch (error) {
-    console.warn('Unable to ensure Sarah demo evidence lab data:', error)
-  }
 
   const twin = await getPatientTwinForClinician({
     patientId,

@@ -57,3 +57,52 @@ export async function PATCH(
     return NextResponse.json({ error: 'Failed to update additional notes' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ visitId: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session || session.user.role !== 'clinician') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { visitId } = await params
+
+    const visit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      select: {
+        id: true,
+        clinicianId: true,
+        patient: {
+          select: {
+            displayName: true,
+          },
+        },
+      },
+    })
+
+    if (!visit) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+    }
+
+    if (visit.clinicianId !== session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    // Delete the visit so all related note data is removed through DB cascades.
+    await prisma.visit.delete({
+      where: { id: visit.id },
+    })
+
+    return NextResponse.json({
+      success: true,
+      deletedVisitId: visit.id,
+      patientName: visit.patient.displayName,
+    })
+  } catch (error) {
+    console.error('Delete SOAP note error:', error)
+    return NextResponse.json({ error: 'Failed to delete note' }, { status: 500 })
+  }
+}

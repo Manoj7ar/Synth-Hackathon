@@ -3,7 +3,6 @@ import { BrainCircuit, FlaskConical, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FloatingSidebarNav } from '@/components/clinician/FloatingSidebarNav'
 import { SoapNotesFloatingHeader } from '@/components/soap-notes/SoapNotesFloatingHeader'
-import { ensureSarahDemoSoapNoteForClinician } from '@/lib/demo/sarah-demo'
 import { prisma } from '@/lib/data/prisma'
 import { requireClinicianPage } from '@/lib/auth/clinician-auth'
 
@@ -18,12 +17,6 @@ function formatDate(date: Date | null) {
 
 export default async function ReconciliationIndexPage() {
   const { user } = await requireClinicianPage()
-
-  try {
-    await ensureSarahDemoSoapNoteForClinician(prisma, user.id)
-  } catch (error) {
-    console.warn('Unable to ensure Sarah demo evidence lab index:', error)
-  }
 
   const patientRows = await prisma.patient.findMany({
     where: {
